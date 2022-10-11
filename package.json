@@ -14,6 +14,7 @@
   "author": "Daniel Fischer <daniel@d-fischer.dev>",
   "license": "MIT",
   "bin": "./bin/crowd.js",
+  "type": "module",
   "devDependencies": {
     "@d-fischer/eslint-config": "^6.1.4",
     "@types/node": "^14.18.31",
@@ -23,6 +24,7 @@
     "lint-staged": "^13.0.3",
     "prettier": "^2.2.1",
     "rimraf": "^3.0.0",
+    "ts-node": "^10.9.1",
     "typescript": "~4.8.4"
   },
   "peerDependencies": {
@@ -43,5 +45,11 @@
   "lint-staged": {
     "*.{js,ts,css,json,md}": "prettier --write",
     "*.{js,ts}": "cross-env DF_ESLINT_NO_TYPE_INFO=1 eslint --fix"
+  },
+  "dependencies": {
+    "@types/toposort": "^2.0.3",
+    "cmd-ts": "^0.11.0",
+    "toposort": "^2.0.2",
+    "type-fest": "^3.1.0"
   }
 }
