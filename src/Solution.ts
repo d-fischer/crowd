@@ -1,15 +1,9 @@
 import path from 'path';
-import toposort from 'toposort';
 import type { PackageJson } from 'type-fest';
-import type { ParsedCommandLine, ProjectReference } from 'typescript';
+import type { ParsedCommandLine } from 'typescript';
+import type { Package } from './deps/DependencyGraph.js';
+import { DependencyGraph } from './deps/DependencyGraph.js';
 import { parseConfig } from './utils/typescript.js';
-
-interface Package {
-	name: string;
-	basePath: string;
-	references: readonly ProjectReference[];
-	dependencies: Partial<Record<string, string>>;
-}
 
 export class Solution {
 	private _rootConfig?: ParsedCommandLine;
@@ -17,7 +11,7 @@ export class Solution {
 
 	constructor(private readonly _rootPath: string) {}
 
-	async listPackages(useToposort: boolean = false): Promise<string[]> {
+	async listPackages(useToposort: boolean = true): Promise<string[]> {
 		const packageMap = await this._getPackageMap();
 		const packageNames = Array.from(packageMap.keys());
 
@@ -25,14 +19,23 @@ export class Solution {
 			return packageNames;
 		}
 
-		const packages = Array.from(packageMap.values());
-		const pathToPackageName = new Map(packages.map(pkg => [pkg.basePath, pkg.name]));
+		const depGraph = new DependencyGraph(packageMap);
+		return depGraph.toposort().reverse();
+	}
 
-		const dependencyPairs = packages.flatMap(pkg =>
-			pkg.references.map((ref): [string, string] => [ref.path, pkg.basePath])
-		);
+	async runScriptInAllPackages(scriptName: string) {
+		const packageMap = await this._getPackageMap();
+		const depGraph = new DependencyGraph(packageMap);
+		depGraph.checkCycles();
 
-		return toposort(dependencyPairs).map(name => pathToPackageName.get(name)!);
+		await depGraph.walkAsync(async pkg => {
+			// TODO actually run scripts...
+			/* eslint-disable no-console */
+			console.log('start', scriptName, pkg.name);
+			await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 500));
+			console.log('stop', scriptName, pkg.name);
+			/* eslint-enable no-console */
+		});
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
@@ -56,7 +59,11 @@ export class Solution {
 							name,
 							basePath: ref.path,
 							references: tsConfig.projectReferences ?? [],
-							dependencies: packageJson.dependencies ?? {}
+							packageJson,
+							combinedDependencies: {
+								...packageJson.dependencies,
+								...packageJson.devDependencies
+							}
 						}
 					] as const;
 				})
@@ -65,10 +72,6 @@ export class Solution {
 	}
 
 	private _getRootConfig(): ParsedCommandLine {
-		if (this._rootConfig) {
-			return this._rootConfig;
-		}
-
-		return (this._rootConfig = parseConfig(path.join(this._rootPath, 'tsconfig.json')));
+		return (this._rootConfig ??= parseConfig(path.join(this._rootPath, 'tsconfig.json')));
 	}
 }

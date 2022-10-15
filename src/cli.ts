@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { boolean, command, flag, run, subcommands } from 'cmd-ts';
+import { boolean, command, flag, positional, run, string, subcommands } from 'cmd-ts';
 import { Solution } from './Solution.js';
 
 const app = subcommands({
@@ -12,12 +12,26 @@ const app = subcommands({
 					type: boolean,
 					long: 'toposort',
 					short: 't',
-					description: 'topologically sort the packages based on the dependency tree'
+					description: 'topologically sort the packages based on the dependency graph'
 				})
 			},
 			handler: async ({ toposort }) => {
 				const solution = new Solution(process.cwd());
 				console.log((await solution.listPackages(toposort)).join('\n'));
+			}
+		}),
+		run: command({
+			name: 'run',
+			args: {
+				scriptName: positional({
+					type: string,
+					displayName: 'scriptName',
+					description: 'the name of the script to run'
+				})
+			},
+			handler: async ({ scriptName }) => {
+				const solution = new Solution(process.cwd());
+				await solution.runScriptInAllPackages(scriptName);
 			}
 		})
 	}
