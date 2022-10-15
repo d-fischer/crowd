@@ -12,9 +12,14 @@
   ],
   "repository": "github:d-fischer/crowd",
   "author": "Daniel Fischer <daniel@d-fischer.dev>",
+  "funding": "https://github.com/sponsors/d-fischer",
   "license": "MIT",
   "bin": "./bin/crowd.js",
   "type": "module",
+  "dependencies": {
+    "cmd-ts": "^0.11.0",
+    "type-fest": "^3.1.0"
+  },
   "devDependencies": {
     "@d-fischer/eslint-config": "^6.1.4",
     "@types/node": "^14.18.31",
@@ -45,11 +50,5 @@
   "lint-staged": {
     "*.{js,ts,css,json,md}": "prettier --write",
     "*.{js,ts}": "cross-env DF_ESLINT_NO_TYPE_INFO=1 eslint --fix"
-  },
-  "dependencies": {
-    "@types/toposort": "^2.0.3",
-    "cmd-ts": "^0.11.0",
-    "toposort": "^2.0.2",
-    "type-fest": "^3.1.0"
   }
 }
