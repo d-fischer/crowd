@@ -110,15 +110,18 @@ export class DependencyGraph {
 			}
 			const pkg = this._packageMap.get(node.pkgName)!;
 			const promise = Promise.all(node.children.map(visit)).then(async (childResults): Promise<GraphResult> => {
+				const skipThisPackage = skipPackages?.includes(pkg.name);
 				if (childResults.some(res => res.shouldChildrenFail)) {
-					errorCallback?.(new TaskError(pkg, 'skipped', 'dependency failure'), pkg);
+					if (!skipThisPackage) {
+						errorCallback?.(new TaskError(pkg, 'skipped', 'dependency failure'), pkg);
+					}
 					return {
 						status: 'skipped',
 						additionalInfo: 'dependency failure',
 						shouldChildrenFail: true
 					};
 				}
-				if (skipPackages?.includes(pkg.name)) {
+				if (skipThisPackage) {
 					return { status: 'success' };
 				}
 				return callback(pkg).then(

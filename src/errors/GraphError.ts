@@ -13,3 +13,5 @@ export class GraphError extends Error {
 		this.name = this.constructor.name;
 	}
 }
+
+Object.defineProperty(GraphError.prototype, 'lastErrorInfo', { writable: true, enumerable: false });

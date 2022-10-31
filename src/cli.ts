@@ -1,8 +1,25 @@
 import { boolean, command, flag, positional, rest, run, string, subcommands } from 'cmd-ts';
+import kleur from 'kleur';
 import type { ReleaseType } from 'semver';
+import { GraphError } from './errors/GraphError.js';
 import { Solution } from './Solution.js';
 
 const VALID_RELEASE_TYPES = ['major', 'premajor', 'minor', 'preminor', 'patch', 'prepatch', 'prerelease'];
+
+function handleError(e: unknown) {
+	if (e instanceof GraphError) {
+		console.error(kleur.red(`${e.errorCount} package(s) failed building; last error:`));
+		console.error(e.lastErrorInfo.error.stack ?? e.lastErrorInfo.error.message);
+	} else {
+		console.error(kleur.red('Something went wrong:'));
+		if (e instanceof Error) {
+			console.error(e.stack ?? e.message);
+		} else {
+			console.error(e);
+		}
+	}
+	process.exit(1);
+}
 
 const app = subcommands({
 	name: 'crowd',
@@ -37,7 +54,14 @@ const app = subcommands({
 			},
 			handler: async ({ scriptName, args }) => {
 				const solution = new Solution(process.cwd());
-				await solution.runScriptInAllPackages(scriptName, args, true);
+				try {
+					const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, true);
+					if (!anyExecuted) {
+						process.exit(1);
+					}
+				} catch (e) {
+					handleError(e);
+				}
 			}
 		}),
 		version: command({
@@ -59,7 +83,11 @@ const app = subcommands({
 				}
 
 				const solution = new Solution(process.cwd());
-				await solution.bumpVersion(releaseType as ReleaseType);
+				try {
+					await solution.bumpVersion(releaseType as ReleaseType);
+				} catch (e) {
+					handleError(e);
+				}
 			}
 		})
 	}

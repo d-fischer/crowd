@@ -11,7 +11,6 @@ import type { ParsedCommandLine } from 'typescript';
 import { GraphWalker } from './components/GraphWalker.js';
 import type { Package } from './deps/DependencyGraph.js';
 import { DependencyGraph } from './deps/DependencyGraph.js';
-import { GraphError } from './errors/GraphError.js';
 import { ScriptError } from './errors/ScriptError.js';
 import { parseConfig } from './utils/typescript.js';
 
@@ -41,7 +40,7 @@ export class Solution {
 		return depGraph.toposort().reverse();
 	}
 
-	async runScriptInAllPackages(scriptName: string, args: string[], withProgress = false) {
+	async runScriptInAllPackages(scriptName: string, args: string[] = [], withProgress = false) {
 		const packageMap = await this._getPackageMap();
 		const depGraph = new DependencyGraph(packageMap);
 		depGraph.checkCycles();
@@ -50,8 +49,8 @@ export class Solution {
 		const packageCountToRun = packageMap.size - skipPackages.length;
 
 		if (packageCountToRun === 0) {
-			console.error(`could not find script ${kleur.cyan(scriptName)} in any of your packages, exiting`);
-			process.exit(1);
+			console.error(`could not find script ${kleur.cyan(scriptName)} in any of your packages`);
+			return false;
 		}
 
 		console.log(`running script ${kleur.cyan(`${[scriptName, ...args].join(' ')}`)} in all packages`);
@@ -65,7 +64,7 @@ export class Solution {
 				};
 			}
 			await new Promise<void>((resolve, reject) => {
-				const proc = spawn('yarn', ['run', scriptName, ...args], {
+				const proc = spawn('yarn', ['run', '--ignore-scripts', scriptName, ...args], {
 					cwd: pkg.basePath
 				});
 
@@ -87,38 +86,26 @@ export class Solution {
 			return undefined;
 		}
 
-		try {
-			if (withProgress) {
-				const app = render(
-					React.createElement(GraphWalker, {
-						graph: depGraph,
-						exec,
-						skipPackages
-					})
-				);
-				await app.waitUntilExit();
-			} else {
-				await depGraph.walkAsync(exec, undefined, skipPackages);
-			}
-			console.log(
-				`Finished running the script ${kleur.cyan(scriptName)} for ${kleur.cyan(
-					packageCountToRun
-				)} packages (skipped ${kleur.yellow(skipPackages.length)} packages that don't have this script)`
+		if (withProgress) {
+			const app = render(
+				React.createElement(GraphWalker, {
+					graph: depGraph,
+					exec,
+					skipPackages
+				})
 			);
-		} catch (e) {
-			if (e instanceof GraphError) {
-				console.error(kleur.red(`${e.errorCount} package(s) failed building; last error:`));
-				console.error(e.lastErrorInfo.error.stack ?? e.lastErrorInfo.error.message);
-			} else {
-				console.error(kleur.red('Something went wrong:'));
-				if (e instanceof Error) {
-					console.error(e.stack ?? e.message);
-				} else {
-					console.error(e);
-				}
-			}
-			process.exit(1);
+			await app.waitUntilExit();
+		} else {
+			await depGraph.walkAsync(exec, undefined, skipPackages);
 		}
+		let msg = `Finished running the script ${kleur.cyan(scriptName)} for ${kleur.cyan(packageCountToRun)} packages`;
+
+		if (skipPackages.length > 0) {
+			msg += ` (skipped ${kleur.yellow(skipPackages.length)} packages that don't have this script)`;
+		}
+
+		console.log(msg);
+		return true;
 	}
 
 	async bumpVersion(type: ReleaseType) {
@@ -129,7 +116,7 @@ export class Solution {
 			process.exit(1);
 		}
 
-		// TODO run pre version scripts
+		await this.runScriptInAllPackages('preversion');
 
 		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
 		const commitMessage = config.commitMessageTemplate
