@@ -1,4 +1,6 @@
+import { promises as fs } from 'fs';
 import path from 'path';
+import type { ReleaseType } from 'semver';
 import type { PackageJson } from 'type-fest';
 import type { ParsedCommandLine } from 'typescript';
 import type { Package } from './deps/DependencyGraph.js';
@@ -11,9 +13,18 @@ import kleur from 'kleur';
 import { GraphError } from './errors/GraphError.js';
 import { spawn } from 'child_process';
 import { ScriptError } from './errors/ScriptError.js';
+import semver from 'semver';
+
+interface CrowdConfig {
+	currentVersion: string;
+	preVersionScripts: string[];
+	prereleaseIdentifier?: string;
+	commitMessageTemplate?: string;
+}
 
 export class Solution {
-	private _rootConfig?: ParsedCommandLine;
+	private _crowdConfig?: CrowdConfig;
+	private _rootTsConfig?: ParsedCommandLine;
 	private _packageMap?: Map<string, Package>;
 
 	constructor(private readonly _rootPath: string) {}
@@ -71,7 +82,6 @@ export class Solution {
 			})
 		);
 
-		/* eslint-disable no-console */
 		try {
 			await app.waitUntilExit();
 			console.log(kleur.cyan('Finished running command for all packages'));
@@ -89,7 +99,26 @@ export class Solution {
 			}
 			process.exit(1);
 		}
-		/* eslint-enable no-console */
+	}
+
+	async bumpVersion(type: ReleaseType) {
+		const config = await this._getConfig();
+		const currentVersion = semver.valid(config.currentVersion);
+		if (!currentVersion) {
+			console.error(`Invalid version set in config: ${config.currentVersion}`);
+			process.exit(1);
+		}
+
+		// TODO run pre version scripts
+
+		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
+		const commitMessage = config.commitMessageTemplate
+			? config.commitMessageTemplate.replace('%s', newVersion)
+			: newVersion;
+
+		// TODO actually modify package.json and config files, git add/commit/push them, remove msg from log
+
+		console.log(`Bumped version: ${currentVersion} -> ${newVersion} (msg: ${commitMessage})`);
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
@@ -99,7 +128,7 @@ export class Solution {
 
 		return (this._packageMap = new Map(
 			await Promise.all(
-				this._getRootConfig().projectReferences!.map(async (ref): Promise<readonly [string, Package]> => {
+				this._getRootTsConfig().projectReferences!.map(async (ref): Promise<readonly [string, Package]> => {
 					const packageJson = (
 						(await import(path.join(ref.path, 'package.json'), { assert: { type: 'json' } })) as {
 							default: PackageJson;
@@ -125,7 +154,24 @@ export class Solution {
 		));
 	}
 
-	private _getRootConfig(): ParsedCommandLine {
-		return (this._rootConfig ??= parseConfig(path.join(this._rootPath, 'tsconfig.json')));
+	private _getRootTsConfig(): ParsedCommandLine {
+		return (this._rootTsConfig ??= parseConfig(path.join(this._rootPath, 'tsconfig.json')));
+	}
+
+	private async _getConfig(): Promise<CrowdConfig> {
+		if (this._crowdConfig) {
+			return this._crowdConfig;
+		}
+
+		const data = JSON.parse(
+			await fs.readFile(path.join(this._rootPath, 'crowd.json'), 'utf-8').catch(() => '{}')
+		) as Partial<CrowdConfig>;
+
+		return (this._crowdConfig = {
+			currentVersion: data.currentVersion ?? '0.0.0',
+			preVersionScripts: data.preVersionScripts ?? [],
+			prereleaseIdentifier: data.prereleaseIdentifier,
+			commitMessageTemplate: data.commitMessageTemplate
+		});
 	}
 }
