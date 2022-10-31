@@ -4,6 +4,13 @@ import type { ParsedCommandLine } from 'typescript';
 import type { Package } from './deps/DependencyGraph.js';
 import { DependencyGraph } from './deps/DependencyGraph.js';
 import { parseConfig } from './utils/typescript.js';
+import { render } from 'ink';
+import { GraphWalker } from './components/GraphWalker.js';
+import React from 'react';
+import kleur from 'kleur';
+import { GraphError } from './errors/GraphError.js';
+import { spawn } from 'child_process';
+import { ScriptError } from './errors/ScriptError.js';
 
 export class Solution {
 	private _rootConfig?: ParsedCommandLine;
@@ -23,19 +30,66 @@ export class Solution {
 		return depGraph.toposort().reverse();
 	}
 
-	async runScriptInAllPackages(scriptName: string) {
+	async runScriptInAllPackages(scriptName: string, args: string[]) {
 		const packageMap = await this._getPackageMap();
 		const depGraph = new DependencyGraph(packageMap);
 		depGraph.checkCycles();
 
-		await depGraph.walkAsync(async pkg => {
-			// TODO actually run scripts...
-			/* eslint-disable no-console */
-			console.log('start', scriptName, pkg.name);
-			await new Promise(resolve => setTimeout(resolve, Math.random() * 1500 + 500));
-			console.log('stop', scriptName, pkg.name);
-			/* eslint-enable no-console */
-		});
+		const app = render(
+			React.createElement(GraphWalker, {
+				graph: depGraph,
+				exec: async pkg => {
+					if (!pkg.packageJson.scripts?.[scriptName]) {
+						return {
+							status: 'skipped',
+							shouldChildrenFail: false,
+							additionalInfo: 'script not found'
+						};
+					}
+					await new Promise<void>((resolve, reject) => {
+						const proc = spawn('yarn', ['run', scriptName, ...args], {
+							cwd: pkg.basePath
+						});
+
+						let errOutput = '';
+
+						proc.stderr.on('data', data => {
+							errOutput += data;
+						});
+
+						proc.on('close', err => {
+							if (err) {
+								reject(new ScriptError(pkg, err, errOutput));
+							} else {
+								resolve();
+							}
+						});
+					});
+
+					return undefined;
+				}
+			})
+		);
+
+		/* eslint-disable no-console */
+		try {
+			await app.waitUntilExit();
+			console.log(kleur.cyan('Finished running command for all packages'));
+		} catch (e) {
+			if (e instanceof GraphError) {
+				console.error(kleur.red(`${e.errorCount} package(s) failed building; last error:`));
+				console.error(e.lastErrorInfo.error.stack ?? e.lastErrorInfo.error.message);
+			} else {
+				console.error(kleur.red('Something went wrong:'));
+				if (e instanceof Error) {
+					console.error(e.stack ?? e.message);
+				} else {
+					console.error(e);
+				}
+			}
+			process.exit(1);
+		}
+		/* eslint-enable no-console */
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {

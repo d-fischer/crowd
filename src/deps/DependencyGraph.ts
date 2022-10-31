@@ -1,5 +1,8 @@
 import type { PackageJson } from 'type-fest';
 import type { ProjectReference } from 'typescript';
+import { TaskError } from '../errors/TaskError.js';
+import type { GraphErrorInfo } from '../errors/GraphError.js';
+import { GraphError } from '../errors/GraphError.js';
 
 export interface Package {
 	name: string;
@@ -12,6 +15,12 @@ export interface Package {
 export interface PackageNode {
 	pkgName: string;
 	children: PackageNode[];
+}
+
+export interface GraphResult {
+	status: string;
+	additionalInfo?: string;
+	shouldChildrenFail?: boolean;
 }
 
 export class DependencyGraph {
@@ -81,26 +90,53 @@ export class DependencyGraph {
 		return result;
 	}
 
-	async walkAsync(callback: (pkg: Package) => Promise<void>, depthFirst = true): Promise<void> {
-		const promiseCache = new Map<PackageNode, Promise<void>>();
+	async walkAsync(
+		callback: (pkg: Package) => Promise<GraphResult | undefined>,
+		errorCallback?: (err: Error, pkg: Package) => void
+	): Promise<void> {
+		const promiseCache = new Map<PackageNode, Promise<GraphResult>>();
+		let errorCount = 0;
+		let lastErrorInfo: GraphErrorInfo | null = null;
 
 		/* eslint-disable @typescript-eslint/return-await */
-		const visit = async (node: PackageNode): Promise<void> => {
+		const visit = async (node: PackageNode): Promise<GraphResult> => {
 			if (promiseCache.has(node)) {
 				return promiseCache.get(node)!;
 			}
 			const pkg = this._packageMap.get(node.pkgName)!;
-			const promise = depthFirst
-				? Promise.all(node.children.map(visit)).then(async () => callback(pkg))
-				: callback(pkg).then(async () => {
-						await Promise.all(node.children.map(visit));
-				  });
+			const promise = Promise.all(node.children.map(visit)).then(async (childResults): Promise<GraphResult> => {
+				if (childResults.some(res => res.shouldChildrenFail)) {
+					errorCallback?.(new TaskError(pkg, 'skipped', 'dependency failure'), pkg);
+					return {
+						status: 'skipped',
+						additionalInfo: 'dependency failure',
+						shouldChildrenFail: true
+					};
+				}
+				return callback(pkg).then(
+					result => result ?? { status: 'success' },
+					e => {
+						errorCallback?.(e, pkg);
+						errorCount++;
+						lastErrorInfo = { error: e as Error, package: pkg };
+						return {
+							status: 'error',
+							shouldChildrenFail: true
+						};
+					}
+				);
+			});
 			promiseCache.set(node, promise);
 			return promise;
 		};
 
 		await Promise.all(Array.from(this._roots.values()).map(async root => visit(root)));
 		/* eslint-enable @typescript-eslint/return-await */
+
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+		if (lastErrorInfo) {
+			throw new GraphError(lastErrorInfo, errorCount);
+		}
 	}
 
 	private _checkCyclesInSubgraph(node: PackageNode, ancestors: string[]) {

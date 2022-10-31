@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
-import { boolean, command, flag, positional, run, string, subcommands } from 'cmd-ts';
+import { boolean, command, flag, positional, rest, run, string, subcommands } from 'cmd-ts';
 import { Solution } from './Solution.js';
+import kleur from 'kleur';
 
 const app = subcommands({
 	name: 'crowd',
@@ -27,11 +28,16 @@ const app = subcommands({
 					type: string,
 					displayName: 'scriptName',
 					description: 'the name of the script to run'
+				}),
+				args: rest({
+					displayName: 'args',
+					description: 'arguments to pass to the script'
 				})
 			},
-			handler: async ({ scriptName }) => {
+			handler: async ({ scriptName, args }) => {
+				console.log(`running script ${kleur.cyan(`${[scriptName, ...args].join(' ')}`)} in all packages`);
 				const solution = new Solution(process.cwd());
-				await solution.runScriptInAllPackages(scriptName);
+				await solution.runScriptInAllPackages(scriptName, args);
 			}
 		})
 	}
