@@ -41,6 +41,9 @@
   "peerDependencies": {
     "typescript": "~4.8.4"
   },
+  "resolutions": {
+    "@types/react": "^17.0.50"
+  },
   "scripts": {
     "lint": "eslint --ext js,ts src",
     "prettier:check": "prettier --check src",
