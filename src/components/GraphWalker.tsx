@@ -8,6 +8,7 @@ import { TaskError } from '../errors/TaskError.js';
 export interface GraphWalkerProps {
 	graph: DependencyGraph;
 	exec: (pkg: Package) => Promise<GraphResult | undefined>;
+	skipPackages?: string[];
 }
 
 interface ResultInfo {
@@ -16,7 +17,7 @@ interface ResultInfo {
 	result?: GraphResult;
 }
 
-export const GraphWalker = ({ graph, exec }: GraphWalkerProps): ReactElement => {
+export const GraphWalker = ({ graph, exec, skipPackages }: GraphWalkerProps): ReactElement => {
 	const [runningEntries, setRunningEntries] = useState<string[]>([]);
 	const [finishedEntries, setFinishedEntries] = useState<ResultInfo[]>([]);
 
@@ -35,7 +36,8 @@ export const GraphWalker = ({ graph, exec }: GraphWalkerProps): ReactElement => 
 				(e, pkg) => {
 					setFinishedEntries(prev => [...prev, { package: pkg.name, error: e }]);
 					setRunningEntries(prev => prev.filter(item => item !== pkg.name));
-				}
+				},
+				skipPackages
 			)
 			.then(
 				() => exit(),

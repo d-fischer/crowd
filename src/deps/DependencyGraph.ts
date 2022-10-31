@@ -90,9 +90,14 @@ export class DependencyGraph {
 		return result;
 	}
 
+	filter(predicate: (pkg: Package) => boolean): Package[] {
+		return Array.from(this._packageMap.values()).filter(predicate);
+	}
+
 	async walkAsync(
 		callback: (pkg: Package) => Promise<GraphResult | undefined>,
-		errorCallback?: (err: Error, pkg: Package) => void
+		errorCallback?: (err: Error, pkg: Package) => void,
+		skipPackages?: string[]
 	): Promise<void> {
 		const promiseCache = new Map<PackageNode, Promise<GraphResult>>();
 		let errorCount = 0;
@@ -112,6 +117,9 @@ export class DependencyGraph {
 						additionalInfo: 'dependency failure',
 						shouldChildrenFail: true
 					};
+				}
+				if (skipPackages?.includes(pkg.name)) {
+					return { status: 'success' };
 				}
 				return callback(pkg).then(
 					result => result ?? { status: 'success' },

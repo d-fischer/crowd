@@ -1,19 +1,19 @@
+import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
+import { render } from 'ink';
+import kleur from 'kleur';
 import path from 'path';
+import React from 'react';
 import type { ReleaseType } from 'semver';
+import semver from 'semver';
 import type { PackageJson } from 'type-fest';
 import type { ParsedCommandLine } from 'typescript';
+import { GraphWalker } from './components/GraphWalker.js';
 import type { Package } from './deps/DependencyGraph.js';
 import { DependencyGraph } from './deps/DependencyGraph.js';
-import { parseConfig } from './utils/typescript.js';
-import { render } from 'ink';
-import { GraphWalker } from './components/GraphWalker.js';
-import React from 'react';
-import kleur from 'kleur';
 import { GraphError } from './errors/GraphError.js';
-import { spawn } from 'child_process';
 import { ScriptError } from './errors/ScriptError.js';
-import semver from 'semver';
+import { parseConfig } from './utils/typescript.js';
 
 interface CrowdConfig {
 	currentVersion: string;
@@ -41,50 +41,70 @@ export class Solution {
 		return depGraph.toposort().reverse();
 	}
 
-	async runScriptInAllPackages(scriptName: string, args: string[]) {
+	async runScriptInAllPackages(scriptName: string, args: string[], withProgress = false) {
 		const packageMap = await this._getPackageMap();
 		const depGraph = new DependencyGraph(packageMap);
 		depGraph.checkCycles();
 
-		const app = render(
-			React.createElement(GraphWalker, {
-				graph: depGraph,
-				exec: async pkg => {
-					if (!pkg.packageJson.scripts?.[scriptName]) {
-						return {
-							status: 'skipped',
-							shouldChildrenFail: false,
-							additionalInfo: 'script not found'
-						};
+		const skipPackages = depGraph.filter(pkg => !pkg.packageJson.scripts?.[scriptName]).map(pkg => pkg.name);
+		const packageCountToRun = packageMap.size - skipPackages.length;
+
+		if (packageCountToRun === 0) {
+			console.error(`could not find script ${kleur.cyan(scriptName)} in any of your packages, exiting`);
+			process.exit(1);
+		}
+
+		console.log(`running script ${kleur.cyan(`${[scriptName, ...args].join(' ')}`)} in all packages`);
+
+		async function exec(pkg: Package) {
+			if (!pkg.packageJson.scripts?.[scriptName]) {
+				return {
+					status: 'skipped',
+					shouldChildrenFail: false,
+					additionalInfo: 'script not found'
+				};
+			}
+			await new Promise<void>((resolve, reject) => {
+				const proc = spawn('yarn', ['run', scriptName, ...args], {
+					cwd: pkg.basePath
+				});
+
+				let errOutput = '';
+
+				proc.stderr.on('data', data => {
+					errOutput += data;
+				});
+
+				proc.on('close', err => {
+					if (err) {
+						reject(new ScriptError(pkg, err, errOutput));
+					} else {
+						resolve();
 					}
-					await new Promise<void>((resolve, reject) => {
-						const proc = spawn('yarn', ['run', scriptName, ...args], {
-							cwd: pkg.basePath
-						});
+				});
+			});
 
-						let errOutput = '';
-
-						proc.stderr.on('data', data => {
-							errOutput += data;
-						});
-
-						proc.on('close', err => {
-							if (err) {
-								reject(new ScriptError(pkg, err, errOutput));
-							} else {
-								resolve();
-							}
-						});
-					});
-
-					return undefined;
-				}
-			})
-		);
+			return undefined;
+		}
 
 		try {
-			await app.waitUntilExit();
-			console.log(kleur.cyan('Finished running command for all packages'));
+			if (withProgress) {
+				const app = render(
+					React.createElement(GraphWalker, {
+						graph: depGraph,
+						exec,
+						skipPackages
+					})
+				);
+				await app.waitUntilExit();
+			} else {
+				await depGraph.walkAsync(exec, undefined, skipPackages);
+			}
+			console.log(
+				`Finished running the script ${kleur.cyan(scriptName)} for ${kleur.cyan(
+					packageCountToRun
+				)} packages (skipped ${kleur.yellow(skipPackages.length)} packages that don't have this script)`
+			);
 		} catch (e) {
 			if (e instanceof GraphError) {
 				console.error(kleur.red(`${e.errorCount} package(s) failed building; last error:`));
@@ -120,7 +140,6 @@ export class Solution {
 
 		console.log(`Bumped version: ${currentVersion} -> ${newVersion} (msg: ${commitMessage})`);
 	}
-
 	private async _getPackageMap(): Promise<Map<string, Package>> {
 		if (this._packageMap) {
 			return this._packageMap;

@@ -1,7 +1,6 @@
 import { boolean, command, flag, positional, rest, run, string, subcommands } from 'cmd-ts';
 import type { ReleaseType } from 'semver';
 import { Solution } from './Solution.js';
-import kleur from 'kleur';
 
 const VALID_RELEASE_TYPES = ['major', 'premajor', 'minor', 'preminor', 'patch', 'prepatch', 'prerelease'];
 
@@ -37,9 +36,8 @@ const app = subcommands({
 				})
 			},
 			handler: async ({ scriptName, args }) => {
-				console.log(`running script ${kleur.cyan(`${[scriptName, ...args].join(' ')}`)} in all packages`);
 				const solution = new Solution(process.cwd());
-				await solution.runScriptInAllPackages(scriptName, args);
+				await solution.runScriptInAllPackages(scriptName, args, true);
 			}
 		}),
 		version: command({
