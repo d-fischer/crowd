@@ -1,6 +1,6 @@
 import type { PackageJson } from 'type-fest';
 import type { ProjectReference } from 'typescript';
-import { TaskError } from '../errors/TaskError.js';
+import { GraphTaskError } from '../errors/GraphTaskError.js';
 import type { GraphErrorInfo } from '../errors/GraphError.js';
 import { GraphError } from '../errors/GraphError.js';
 
@@ -113,7 +113,7 @@ export class DependencyGraph {
 				const skipThisPackage = skipPackages?.includes(pkg.name);
 				if (childResults.some(res => res.shouldChildrenFail)) {
 					if (!skipThisPackage) {
-						errorCallback?.(new TaskError(pkg, 'skipped', 'dependency failure'), pkg);
+						errorCallback?.(new GraphTaskError(pkg, 'skipped', 'dependency failure'), pkg);
 					}
 					return {
 						status: 'skipped',

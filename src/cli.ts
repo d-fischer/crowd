@@ -50,12 +50,18 @@ const app = subcommands({
 				args: rest({
 					displayName: 'args',
 					description: 'arguments to pass to the script'
+				}),
+				noProgress: flag({
+					type: boolean,
+					long: 'no-progress',
+					short: 'P',
+					description: 'disable detailed progress of separate packages'
 				})
 			},
-			handler: async ({ scriptName, args }) => {
+			handler: async ({ scriptName, args, noProgress }) => {
 				const solution = new Solution(process.cwd());
 				try {
-					const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, true);
+					const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, !noProgress);
 					if (!anyExecuted) {
 						process.exit(1);
 					}

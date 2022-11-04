@@ -1,4 +1,3 @@
-import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import { render } from 'ink';
 import kleur from 'kleur';
@@ -11,7 +10,9 @@ import type { ParsedCommandLine } from 'typescript';
 import { GraphWalker } from './components/GraphWalker.js';
 import type { Package } from './deps/DependencyGraph.js';
 import { DependencyGraph } from './deps/DependencyGraph.js';
-import { ScriptError } from './errors/ScriptError.js';
+import { PackageScriptError } from './errors/PackageScriptError.js';
+import { ExecutionError } from './errors/ExecutionError.js';
+import { runLifecycle } from './utils/lifecycle.js';
 import { parseConfig } from './utils/typescript.js';
 
 interface CrowdConfig {
@@ -24,6 +25,7 @@ interface CrowdConfig {
 export class Solution {
 	private _crowdConfig?: CrowdConfig;
 	private _rootTsConfig?: ParsedCommandLine;
+	private _rootPackageJson?: PackageJson;
 	private _packageMap?: Map<string, Package>;
 
 	constructor(private readonly _rootPath: string) {}
@@ -38,6 +40,14 @@ export class Solution {
 
 		const depGraph = new DependencyGraph(packageMap);
 		return depGraph.toposort().reverse();
+	}
+
+	async runScriptInAllPackagesWithRoot(scriptName: string, args: string[] = []) {
+		await this.runScriptInAllPackages(scriptName, args, false);
+		const rootPackage = await this._getRootPackageJson();
+		if (rootPackage.scripts?.preversion) {
+			await runLifecycle(this._rootPath, scriptName, args);
+		}
 	}
 
 	async runScriptInAllPackages(scriptName: string, args: string[] = [], withProgress = false) {
@@ -63,25 +73,11 @@ export class Solution {
 					additionalInfo: 'script not found'
 				};
 			}
-			await new Promise<void>((resolve, reject) => {
-				const proc = spawn('yarn', ['run', '--ignore-scripts', scriptName, ...args], {
-					cwd: pkg.basePath
-				});
-
-				let errOutput = '';
-
-				proc.stderr.on('data', data => {
-					errOutput += data;
-				});
-
-				proc.on('close', err => {
-					if (err) {
-						reject(new ScriptError(pkg, err, errOutput));
-					} else {
-						resolve();
-					}
-				});
-			});
+			try {
+				await runLifecycle(pkg.basePath, scriptName, args);
+			} catch (e: unknown) {
+				throw e instanceof ExecutionError ? new PackageScriptError(pkg, e.code, e.stderr, { cause: e }) : e;
+			}
 
 			return undefined;
 		}
@@ -116,17 +112,25 @@ export class Solution {
 			process.exit(1);
 		}
 
-		await this.runScriptInAllPackages('preversion');
+		await this.runScriptInAllPackagesWithRoot('preversion');
 
 		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
 		const commitMessage = config.commitMessageTemplate
 			? config.commitMessageTemplate.replace('%s', newVersion)
 			: newVersion;
 
-		// TODO actually modify package.json and config files, git add/commit/push them, remove msg from log
+		// TODO actually modify package.json and config files, git add
 
+		await this.runScriptInAllPackagesWithRoot('version');
+
+		// TODO git commit/tag/push
+
+		await this.runScriptInAllPackagesWithRoot('postversion');
+
+		// TODO remove msg from log
 		console.log(`Bumped version: ${currentVersion} -> ${newVersion} (msg: ${commitMessage})`);
 	}
+
 	private async _getPackageMap(): Promise<Map<string, Package>> {
 		if (this._packageMap) {
 			return this._packageMap;
@@ -135,11 +139,7 @@ export class Solution {
 		return (this._packageMap = new Map(
 			await Promise.all(
 				this._getRootTsConfig().projectReferences!.map(async (ref): Promise<readonly [string, Package]> => {
-					const packageJson = (
-						(await import(path.join(ref.path, 'package.json'), { assert: { type: 'json' } })) as {
-							default: PackageJson;
-						}
-					).default;
+					const packageJson = await this._getPackageJson(ref.path);
 					const tsConfig = parseConfig(path.join(ref.path, 'tsconfig.json'));
 					const name = packageJson.name!;
 					return [
@@ -158,6 +158,22 @@ export class Solution {
 				})
 			)
 		));
+	}
+
+	private async _getRootPackageJson(): Promise<PackageJson> {
+		if (this._rootPackageJson) {
+			return this._rootPackageJson;
+		}
+
+		return (this._rootPackageJson = await this._getPackageJson(this._rootPath));
+	}
+
+	private async _getPackageJson(folderPath: string) {
+		return (
+			(await import(path.join(folderPath, 'package.json'), { assert: { type: 'json' } })) as {
+				default: PackageJson;
+			}
+		).default;
 	}
 
 	private _getRootTsConfig(): ParsedCommandLine {

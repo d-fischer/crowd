@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import React, { useEffect, useState } from 'react';
 import { Box, Static, Text, useApp } from 'ink';
 import Spinner from 'ink-spinner';
-import { TaskError } from '../errors/TaskError.js';
+import { GraphTaskError } from '../errors/GraphTaskError.js';
 
 export interface GraphWalkerProps {
 	graph: DependencyGraph;
@@ -50,7 +50,7 @@ export const GraphWalker = ({ graph, exec, skipPackages }: GraphWalkerProps): Re
 			<Static items={finishedEntries}>
 				{item =>
 					item.error ? (
-						item.error instanceof TaskError && item.error.code === 'skipped' ? (
+						item.error instanceof GraphTaskError && item.error.code === 'skipped' ? (
 							<Text key={item.package} color="yellow">
 								? {item.package} skipped
 								{item.error.additionalInfo ? ` (${item.error.additionalInfo})` : ''}
