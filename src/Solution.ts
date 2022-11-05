@@ -14,16 +14,22 @@ import { PackageScriptError } from './errors/PackageScriptError.js';
 import { ExecutionError } from './errors/ExecutionError.js';
 import { runLifecycle } from './utils/lifecycle.js';
 import { parseConfig } from './utils/typescript.js';
+import detectIndent from 'detect-indent';
+import { execProcess } from './utils/process.js';
 
 interface CrowdConfig {
 	currentVersion: string;
-	preVersionScripts: string[];
 	prereleaseIdentifier?: string;
 	commitMessageTemplate?: string;
 }
 
+interface BumpVersionOptions {
+	commitStaged: boolean;
+}
+
 export class Solution {
 	private _crowdConfig?: CrowdConfig;
+	private _crowdConfigRaw?: string;
 	private _rootTsConfig?: ParsedCommandLine;
 	private _rootPackageJson?: PackageJson;
 	private _packageMap?: Map<string, Package>;
@@ -104,12 +110,23 @@ export class Solution {
 		return true;
 	}
 
-	async bumpVersion(type: ReleaseType) {
-		const config = await this._getConfig();
+	async bumpVersion(type: ReleaseType, options: BumpVersionOptions) {
+		const { parsed: config, raw: rawConfig } = await this._getConfig();
 		const currentVersion = semver.valid(config.currentVersion);
 		if (!currentVersion) {
 			console.error(`Invalid version set in config: ${config.currentVersion}`);
 			process.exit(1);
+		}
+
+		if (!options.commitStaged) {
+			try {
+				await execProcess('git', ['diff', '--quiet', '--cached'], this._rootPath);
+			} catch (e) {
+				console.error(`There are staged changes in your git repository.
+				
+Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to keep them in your version commit.`);
+				process.exit(1);
+			}
 		}
 
 		await this.runScriptInAllPackagesWithRoot('preversion');
@@ -119,16 +136,63 @@ export class Solution {
 			? config.commitMessageTemplate.replace('%s', newVersion)
 			: newVersion;
 
-		// TODO actually modify package.json and config files, git add
+		const changedFiles = new Set<string>();
+		for (const pkg of (await this._getPackageMap()).values()) {
+			const newPackageJson: PackageJson = {
+				...pkg.packageJson
+			};
+
+			newPackageJson.version = newVersion;
+
+			if (pkg.packageJson.dependencies) {
+				newPackageJson.dependencies = await this._modifyDependencyObject(
+					pkg.packageJson.dependencies,
+					newVersion
+				);
+			}
+			if (pkg.packageJson.peerDependencies) {
+				newPackageJson.peerDependencies = await this._modifyDependencyObject(
+					pkg.packageJson.peerDependencies,
+					newVersion
+				);
+			}
+			if (pkg.packageJson.devDependencies) {
+				newPackageJson.devDependencies = await this._modifyDependencyObject(
+					pkg.packageJson.devDependencies,
+					newVersion
+				);
+			}
+
+			const packageJsonPath = path.join(pkg.basePath, 'package.json');
+			const modified = await this._modifyJsonFile(packageJsonPath, pkg.rawPackageJson, newPackageJson);
+
+			if (modified) {
+				changedFiles.add(path.relative(this._rootPath, packageJsonPath));
+			}
+		}
+
+		const newCrowdConfig: CrowdConfig = {
+			...(await this._getConfig()).parsed,
+			currentVersion: newVersion
+		};
+		const modified = await this._modifyJsonFile(path.join(this._rootPath, 'crowd.json'), rawConfig, newCrowdConfig);
+
+		if (modified) {
+			changedFiles.add('crowd.json');
+		}
+
+		await this._gitAdd(Array.from(changedFiles));
 
 		await this.runScriptInAllPackagesWithRoot('version');
 
-		// TODO git commit/tag/push
+		await execProcess('git', ['commit', '-m', commitMessage], this._rootPath);
+		await execProcess('git', ['tag', `v${newVersion}`], this._rootPath);
 
 		await this.runScriptInAllPackagesWithRoot('postversion');
 
-		// TODO remove msg from log
-		console.log(`Bumped version: ${currentVersion} -> ${newVersion} (msg: ${commitMessage})`);
+		// TODO git push?
+
+		console.log(`Bumped version: ${currentVersion} -> ${newVersion}`);
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
@@ -139,7 +203,7 @@ export class Solution {
 		return (this._packageMap = new Map(
 			await Promise.all(
 				this._getRootTsConfig().projectReferences!.map(async (ref): Promise<readonly [string, Package]> => {
-					const packageJson = await this._getPackageJson(ref.path);
+					const { raw: rawPackageJson, parsed: packageJson } = await this._getPackageJson(ref.path);
 					const tsConfig = parseConfig(path.join(ref.path, 'tsconfig.json'));
 					const name = packageJson.name!;
 					return [
@@ -149,6 +213,7 @@ export class Solution {
 							basePath: ref.path,
 							references: tsConfig.projectReferences ?? [],
 							packageJson,
+							rawPackageJson,
 							combinedDependencies: {
 								...packageJson.dependencies,
 								...packageJson.devDependencies
@@ -168,32 +233,68 @@ export class Solution {
 		return (this._rootPackageJson = await this._getPackageJson(this._rootPath));
 	}
 
+	private async _modifyJsonFile(filePath: string, origRaw: string, newData: unknown) {
+		const { indent } = detectIndent(origRaw);
+		const newRaw = `${JSON.stringify(newData, undefined, indent)}\n`;
+		if (origRaw === newRaw) {
+			return false;
+		}
+		await fs.writeFile(filePath, newRaw);
+		return true;
+	}
+
 	private async _getPackageJson(folderPath: string) {
-		return (
-			(await import(path.join(folderPath, 'package.json'), { assert: { type: 'json' } })) as {
-				default: PackageJson;
-			}
-		).default;
+		const filePath = path.join(folderPath, 'package.json');
+		const raw = await fs.readFile(filePath, 'utf-8');
+		const parsed = JSON.parse(raw) as PackageJson;
+
+		return { raw, parsed };
+	}
+
+	private async _modifyDependencyObject(
+		deps: PackageJson.Dependency,
+		newVersion: string
+	): Promise<PackageJson.Dependency> {
+		const packageMap = await this._getPackageMap();
+		return Object.fromEntries(
+			Object.entries(deps).map(([name, version]) => {
+				if (!packageMap.has(name)) {
+					return [name, version];
+				}
+				return [name, newVersion];
+			})
+		);
 	}
 
 	private _getRootTsConfig(): ParsedCommandLine {
 		return (this._rootTsConfig ??= parseConfig(path.join(this._rootPath, 'tsconfig.json')));
 	}
 
-	private async _getConfig(): Promise<CrowdConfig> {
+	private async _getConfig() {
 		if (this._crowdConfig) {
-			return this._crowdConfig;
+			return {
+				raw: this._crowdConfigRaw!,
+				parsed: this._crowdConfig
+			};
 		}
 
-		const data = JSON.parse(
-			await fs.readFile(path.join(this._rootPath, 'crowd.json'), 'utf-8').catch(() => '{}')
-		) as Partial<CrowdConfig>;
+		const raw = await fs.readFile(path.join(this._rootPath, 'crowd.json'), 'utf-8').catch(() => '{}');
+		const data = JSON.parse(raw) as Partial<CrowdConfig>;
 
-		return (this._crowdConfig = {
+		this._crowdConfigRaw = raw;
+		this._crowdConfig = {
 			currentVersion: data.currentVersion ?? '0.0.0',
-			preVersionScripts: data.preVersionScripts ?? [],
 			prereleaseIdentifier: data.prereleaseIdentifier,
 			commitMessageTemplate: data.commitMessageTemplate
-		});
+		};
+
+		return {
+			raw,
+			parsed: this._crowdConfig
+		};
+	}
+
+	private async _gitAdd(files: string[]) {
+		await execProcess('git', ['add', '--', ...files], this._rootPath);
 	}
 }

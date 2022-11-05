@@ -78,9 +78,16 @@ const app = subcommands({
 					displayName: 'releaseType',
 					description:
 						'The release type of the version bump. Determines which part of the version number will increase.'
+				}),
+				commitStaged: flag({
+					type: boolean,
+					long: 'commit-staged',
+					short: 's',
+					description:
+						'Adds the currently staged changes to the version commit. If this is not used, the command will fail if there are any staged changes.'
 				})
 			},
-			handler: async ({ releaseType }) => {
+			handler: async ({ releaseType, commitStaged }) => {
 				if (!VALID_RELEASE_TYPES.includes(releaseType)) {
 					console.error(
 						`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(', ')}`
@@ -90,7 +97,7 @@ const app = subcommands({
 
 				const solution = new Solution(process.cwd());
 				try {
-					await solution.bumpVersion(releaseType as ReleaseType);
+					await solution.bumpVersion(releaseType as ReleaseType, { commitStaged });
 				} catch (e) {
 					handleError(e);
 				}

@@ -9,6 +9,7 @@ export interface Package {
 	basePath: string;
 	references: readonly ProjectReference[];
 	packageJson: PackageJson;
+	rawPackageJson: string;
 	combinedDependencies: Partial<Record<string, string>>;
 }
 
