@@ -1,5 +1,6 @@
 import { boolean, command, flag, positional, rest, run, string, subcommands } from 'cmd-ts';
 import kleur from 'kleur';
+import prompts from 'prompts';
 import type { ReleaseType } from 'semver';
 import { GraphError } from './errors/GraphError.js';
 import { Solution } from './Solution.js';
@@ -85,9 +86,15 @@ const app = subcommands({
 					short: 's',
 					description:
 						'Adds the currently staged changes to the version commit. If this is not used, the command will fail if there are any staged changes.'
+				}),
+				yes: flag({
+					type: boolean,
+					long: 'yes',
+					short: 'y',
+					description: 'Skips all interactive confirmations.'
 				})
 			},
-			handler: async ({ releaseType, commitStaged }) => {
+			handler: async ({ releaseType, commitStaged, yes }) => {
 				if (!VALID_RELEASE_TYPES.includes(releaseType)) {
 					console.error(
 						`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(', ')}`
@@ -97,7 +104,43 @@ const app = subcommands({
 
 				const solution = new Solution(process.cwd());
 				try {
-					await solution.bumpVersion(releaseType as ReleaseType, { commitStaged });
+					const { oldVersion, newVersion } = await solution.getVersionBump(releaseType as ReleaseType);
+
+					if (!yes) {
+						console.log('This command will:');
+						console.log(
+							`- Update all your package.json files from version ${kleur.cyan(
+								oldVersion
+							)} to ${kleur.cyan(newVersion)} (including dependencies) as well as your crowd.json file`
+						);
+						let commitBulletPoint = '- Create a commit with the above changes';
+						if (commitStaged) {
+							commitBulletPoint += kleur.cyan(' and any changes already in the git index');
+						}
+						console.log(commitBulletPoint);
+						console.log(`- Tag the commit as ${kleur.cyan(`v${newVersion}`)}`);
+						console.log(
+							`- Run the ${kleur.cyan(
+								'preversion, version and postversion'
+							)} scripts in all packages and in the root at the appropriate times`
+						);
+
+						const { confirmed } = (await prompts({
+							type: 'confirm',
+							name: 'confirmed',
+							message: 'Is that okay?',
+							initial: false
+						})) as { confirmed: boolean };
+
+						if (!confirmed) {
+							console.error('Aborted by user.');
+							process.exit(1);
+						}
+					}
+
+					await solution.updateVersion(newVersion, { commitStaged });
+
+					console.log(`Updated version from ${kleur.cyan(oldVersion)} to ${kleur.cyan(newVersion)}`);
 				} catch (e) {
 					handleError(e);
 				}

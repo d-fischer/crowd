@@ -1,3 +1,4 @@
+import detectIndent from 'detect-indent';
 import { promises as fs } from 'fs';
 import { render } from 'ink';
 import kleur from 'kleur';
@@ -10,26 +11,32 @@ import type { ParsedCommandLine } from 'typescript';
 import { GraphWalker } from './components/GraphWalker.js';
 import type { Package } from './deps/DependencyGraph.js';
 import { DependencyGraph } from './deps/DependencyGraph.js';
-import { PackageScriptError } from './errors/PackageScriptError.js';
 import { ExecutionError } from './errors/ExecutionError.js';
+import { PackageScriptError } from './errors/PackageScriptError.js';
 import { runLifecycle } from './utils/lifecycle.js';
-import { parseConfig } from './utils/typescript.js';
-import detectIndent from 'detect-indent';
 import { execProcess } from './utils/process.js';
+import { parseConfig } from './utils/typescript.js';
 
 interface CrowdConfig {
 	currentVersion: string;
+	gitRemote: string;
 	prereleaseIdentifier?: string;
 	commitMessageTemplate?: string;
+	outOfDateBehavior?: string;
 }
 
 interface BumpVersionOptions {
 	commitStaged: boolean;
 }
 
+interface CrowdConfigInternal {
+	raw: string;
+	parsed: Partial<CrowdConfig>;
+	config: CrowdConfig;
+}
+
 export class Solution {
-	private _crowdConfig?: CrowdConfig;
-	private _crowdConfigRaw?: string;
+	private _crowdConfig?: CrowdConfigInternal;
 	private _rootTsConfig?: ParsedCommandLine;
 	private _rootPackageJson?: PackageJson;
 	private _packageMap?: Map<string, Package>;
@@ -110,13 +117,22 @@ export class Solution {
 		return true;
 	}
 
-	async bumpVersion(type: ReleaseType, options: BumpVersionOptions) {
-		const { parsed: config, raw: rawConfig } = await this._getConfig();
+	async getVersionBump(type: ReleaseType) {
+		const { config } = await this._getConfig();
 		const currentVersion = semver.valid(config.currentVersion);
 		if (!currentVersion) {
 			console.error(`Invalid version set in config: ${config.currentVersion}`);
 			process.exit(1);
 		}
+
+		return {
+			oldVersion: currentVersion,
+			newVersion: semver.inc(currentVersion, type, config.prereleaseIdentifier)!
+		};
+	}
+
+	async updateVersion(newVersion: string, options: BumpVersionOptions) {
+		const { config, parsed: parsedConfig, raw: rawConfig } = await this._getConfig();
 
 		if (!options.commitStaged) {
 			try {
@@ -129,9 +145,10 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			}
 		}
 
+		await this._handleOutOfDate();
+
 		await this.runScriptInAllPackagesWithRoot('preversion');
 
-		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
 		const commitMessage = config.commitMessageTemplate
 			? config.commitMessageTemplate.replace('%s', newVersion)
 			: newVersion;
@@ -171,10 +188,9 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			}
 		}
 
-		const newCrowdConfig: CrowdConfig = {
-			...(await this._getConfig()).parsed,
-			currentVersion: newVersion
-		};
+		const newCrowdConfig: Partial<CrowdConfig> = { ...parsedConfig };
+		newCrowdConfig.currentVersion = newVersion;
+
 		const modified = await this._modifyJsonFile(path.join(this._rootPath, 'crowd.json'), rawConfig, newCrowdConfig);
 
 		if (modified) {
@@ -185,14 +201,12 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 
 		await this.runScriptInAllPackagesWithRoot('version');
 
-		await execProcess('git', ['commit', '-m', commitMessage], this._rootPath);
+		await execProcess('git', ['commit', '--no-verify', '-m', commitMessage], this._rootPath);
 		await execProcess('git', ['tag', `v${newVersion}`], this._rootPath);
 
 		await this.runScriptInAllPackagesWithRoot('postversion');
 
 		// TODO git push?
-
-		console.log(`Bumped version: ${currentVersion} -> ${newVersion}`);
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
@@ -270,31 +284,90 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		return (this._rootTsConfig ??= parseConfig(path.join(this._rootPath, 'tsconfig.json')));
 	}
 
-	private async _getConfig() {
+	private async _getConfig(): Promise<CrowdConfigInternal> {
 		if (this._crowdConfig) {
-			return {
-				raw: this._crowdConfigRaw!,
-				parsed: this._crowdConfig
-			};
+			return this._crowdConfig;
 		}
 
 		const raw = await fs.readFile(path.join(this._rootPath, 'crowd.json'), 'utf-8').catch(() => '{}');
-		const data = JSON.parse(raw) as Partial<CrowdConfig>;
+		const parsed = JSON.parse(raw) as Partial<CrowdConfig>;
 
-		this._crowdConfigRaw = raw;
-		this._crowdConfig = {
-			currentVersion: data.currentVersion ?? '0.0.0',
-			prereleaseIdentifier: data.prereleaseIdentifier,
-			commitMessageTemplate: data.commitMessageTemplate
-		};
-
-		return {
+		return (this._crowdConfig = {
 			raw,
-			parsed: this._crowdConfig
-		};
+			parsed,
+			config: {
+				currentVersion: '0.0.0',
+				gitRemote: 'origin',
+				...parsed
+			}
+		});
 	}
 
 	private async _gitAdd(files: string[]) {
 		await execProcess('git', ['add', '--', ...files], this._rootPath);
+	}
+
+	private async _handleOutOfDate() {
+		const { config } = await this._getConfig();
+
+		switch (config.outOfDateBehavior) {
+			case undefined:
+			case 'ignore': {
+				break;
+			}
+			case 'pull':
+			case 'forcePull':
+			case 'fail': {
+				const currentBranch = await execProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+				if (!currentBranch) {
+					console.error(
+						`You are not currently on the tip of a branch.
+						
+Please use ${kleur.cyan('git switch')} to choose one.`
+					);
+					process.exit(1);
+				}
+				await execProcess('git', ['fetch', config.gitRemote, currentBranch]);
+				const localRev = await execProcess('git', ['rev-parse', '@']);
+				const remoteRev = await execProcess('git', ['rev-parse', '@{u}']);
+				const baseRev = await execProcess('git', ['merge-base', '@', '@{u}']);
+
+				let shouldPull = false;
+				if (localRev !== remoteRev) {
+					if (localRev === baseRev) {
+						// remote is strictly newer than local, i.e. all local commits exist on the remote
+						if (config.outOfDateBehavior === 'fail') {
+							console.error(`Your local branch is out of date with the latest changes on your git remote.
+							
+Please use ${kleur.cyan('git pull')} to update it, then retry.`);
+							process.exit(1);
+						}
+						shouldPull = true;
+					} else if (remoteRev !== baseRev) {
+						// diverged
+						if (config.outOfDateBehavior !== 'forcePull') {
+							console.error(`Your local branch has diverged from the latest changes on your git remote.
+							
+Please use ${kleur.cyan('git pull')} to update it and fix any possible merge conflicts, then retry.`);
+							process.exit(1);
+						}
+						shouldPull = true;
+					}
+				}
+
+				if (shouldPull) {
+					await execProcess('git', ['pull', config.gitRemote, currentBranch]);
+				}
+				break;
+			}
+			default: {
+				console.error(
+					`Unknown value for ${kleur.yellow('outOfDateBehavior')} configuration value: ${kleur.yellow(
+						config.outOfDateBehavior
+					)}`
+				);
+				process.exit(1);
+			}
+		}
 	}
 }

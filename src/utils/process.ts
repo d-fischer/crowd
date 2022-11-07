@@ -20,7 +20,7 @@ export async function execProcess(cmd: string, args: string[] = [], cwd?: string
 			if (err) {
 				reject(new ExecutionError(err, errOutput));
 			} else {
-				resolve(output);
+				resolve(output.trimEnd());
 			}
 		});
 	});
