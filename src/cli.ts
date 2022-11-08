@@ -22,143 +22,151 @@ function handleError(e: unknown) {
 	process.exit(1);
 }
 
-const app = subcommands({
-	name: 'crowd',
-	cmds: {
-		list: command({
-			name: 'list',
-			args: {
-				toposort: flag({
-					type: boolean,
-					long: 'toposort',
-					short: 't',
-					description: 'topologically sort the packages based on the dependency graph'
-				})
-			},
-			handler: async ({ toposort }) => {
-				const solution = new Solution(process.cwd());
-				console.log((await solution.listPackages(toposort)).join('\n'));
-			}
-		}),
-		run: command({
-			name: 'run',
-			args: {
-				scriptName: positional({
-					type: string,
-					displayName: 'scriptName',
-					description: 'the name of the script to run'
-				}),
-				args: rest({
-					displayName: 'args',
-					description: 'arguments to pass to the script'
-				}),
-				noProgress: flag({
-					type: boolean,
-					long: 'no-progress',
-					short: 'P',
-					description: 'disable detailed progress of separate packages'
-				})
-			},
-			handler: async ({ scriptName, args, noProgress }) => {
-				const solution = new Solution(process.cwd());
-				try {
-					const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, !noProgress);
-					if (!anyExecuted) {
-						process.exit(1);
-					}
-				} catch (e) {
-					handleError(e);
+export async function cli() {
+	const app = subcommands({
+		name: 'crowd',
+		cmds: {
+			list: command({
+				name: 'list',
+				args: {
+					toposort: flag({
+						type: boolean,
+						long: 'toposort',
+						short: 't',
+						description: 'topologically sort the packages based on the dependency graph'
+					})
+				},
+				handler: async ({ toposort }) => {
+					const solution = new Solution(process.cwd());
+					console.log((await solution.listPackages(toposort)).join('\n'));
 				}
-			}
-		}),
-		version: command({
-			name: 'version',
-			args: {
-				releaseType: positional({
-					type: string,
-					displayName: 'releaseType',
-					description:
-						'The release type of the version bump. Determines which part of the version number will increase.'
-				}),
-				commitStaged: flag({
-					type: boolean,
-					long: 'commit-staged',
-					short: 's',
-					description:
-						'Adds the currently staged changes to the version commit. If this is not used, the command will fail if there are any staged changes.'
-				}),
-				yes: flag({
-					type: boolean,
-					long: 'yes',
-					short: 'y',
-					description: 'Skips all interactive confirmations.'
-				}),
-				publish: flag({
-					type: boolean,
-					long: 'publish',
-					description: 'Publishes the created version to npm.'
-				})
-			},
-			handler: async ({ releaseType, commitStaged, yes, publish }) => {
-				if (!VALID_RELEASE_TYPES.includes(releaseType)) {
-					console.error(
-						`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(', ')}`
-					);
-					process.exit(1);
-				}
-
-				const solution = new Solution(process.cwd());
-				try {
-					const { currentVersion, newVersion } = await solution.getVersionBump(releaseType as ReleaseType);
-
-					if (!yes) {
-						console.log('This command will:');
-						console.log(
-							`- Update all your package.json files from version ${kleur.cyan(
-								currentVersion
-							)} to ${kleur.cyan(newVersion)} (including dependencies) as well as your crowd.json file`
-						);
-						let commitBulletPoint = `- Create a ${kleur.cyan('commit')} with the above changes`;
-						if (commitStaged) {
-							commitBulletPoint += kleur.cyan(' and any changes already in the git index');
-						}
-						console.log(commitBulletPoint);
-						console.log(`- Tag the commit as ${kleur.cyan(`v${newVersion}`)}`);
-						console.log(
-							`- Run the ${kleur.cyan(
-								'preversion, version and postversion'
-							)} scripts in all packages and in the root at the appropriate times`
-						);
-						if (publish) {
-							console.log(`- ${kleur.cyan('Publish')} all packages`);
-						}
-
-						const { confirmed } = (await prompts({
-							type: 'confirm',
-							name: 'confirmed',
-							message: 'Is that okay?',
-							initial: false
-						})) as { confirmed: boolean };
-
-						if (!confirmed) {
-							console.error('Aborted by user.');
+			}),
+			run: command({
+				name: 'run',
+				args: {
+					scriptName: positional({
+						type: string,
+						displayName: 'scriptName',
+						description: 'the name of the script to run'
+					}),
+					args: rest({
+						displayName: 'args',
+						description: 'arguments to pass to the script'
+					}),
+					noProgress: flag({
+						type: boolean,
+						long: 'no-progress',
+						short: 'P',
+						description: 'disable detailed progress of separate packages'
+					})
+				},
+				handler: async ({ scriptName, args, noProgress }) => {
+					const solution = new Solution(process.cwd());
+					try {
+						const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, !noProgress);
+						if (!anyExecuted) {
 							process.exit(1);
 						}
+					} catch (e) {
+						handleError(e);
+					}
+				}
+			}),
+			version: command({
+				name: 'version',
+				args: {
+					releaseType: positional({
+						type: string,
+						displayName: 'releaseType',
+						description:
+							'The release type of the version bump. Determines which part of the version number will increase.'
+					}),
+					commitStaged: flag({
+						type: boolean,
+						long: 'commit-staged',
+						short: 's',
+						description:
+							'Adds the currently staged changes to the version commit. If this is not used, the command will fail if there are any staged changes.'
+					}),
+					yes: flag({
+						type: boolean,
+						long: 'yes',
+						short: 'y',
+						description: 'Skips all interactive confirmations.'
+					}),
+					publish: flag({
+						type: boolean,
+						long: 'publish',
+						description: 'Publishes the created version to npm.'
+					})
+				},
+				handler: async ({ releaseType, commitStaged, yes, publish }) => {
+					if (!VALID_RELEASE_TYPES.includes(releaseType)) {
+						console.error(
+							`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(
+								', '
+							)}`
+						);
+						process.exit(1);
 					}
 
-					await solution.updateVersion(newVersion, {
-						commitStaged,
-						publish,
-						isPrerelease: releaseType.startsWith('pre')
-					});
+					const solution = new Solution(process.cwd());
+					try {
+						const { currentVersion, newVersion } = await solution.getVersionBump(
+							releaseType as ReleaseType
+						);
 
-					console.log(`Updated version from ${kleur.cyan(currentVersion)} to ${kleur.cyan(newVersion)}`);
-				} catch (e) {
-					handleError(e);
+						if (!yes) {
+							console.log('This command will:');
+							console.log(
+								`- Update all your package.json files from version ${kleur.cyan(
+									currentVersion
+								)} to ${kleur.cyan(
+									newVersion
+								)} (including dependencies) as well as your crowd.json file`
+							);
+							let commitBulletPoint = `- Create a ${kleur.cyan('commit')} with the above changes`;
+							if (commitStaged) {
+								commitBulletPoint += kleur.cyan(' and any changes already in the git index');
+							}
+							console.log(commitBulletPoint);
+							console.log(`- Tag the commit as ${kleur.cyan(`v${newVersion}`)}`);
+							console.log(
+								`- Run the ${kleur.cyan(
+									'preversion, version and postversion'
+								)} scripts in all packages and in the root at the appropriate times`
+							);
+							if (publish) {
+								console.log(`- ${kleur.cyan('Publish')} all packages`);
+							}
+
+							const { confirmed } = (await prompts({
+								type: 'confirm',
+								name: 'confirmed',
+								message: 'Is that okay?',
+								initial: false
+							})) as { confirmed: boolean };
+
+							if (!confirmed) {
+								console.error('Aborted by user.');
+								process.exit(1);
+							}
+						}
+
+						await solution.updateVersion(newVersion, {
+							commitStaged,
+							publish,
+							isPrerelease: releaseType.startsWith('pre')
+						});
+
+						console.log(`Updated version from ${kleur.cyan(currentVersion)} to ${kleur.cyan(newVersion)}`);
+					} catch (e) {
+						handleError(e);
+					}
 				}
-			}
-		})
-	}
-});
+			})
+		}
+	});
 
-await run(app, process.argv.slice(2));
+	await run(app, process.argv.slice(2));
+}

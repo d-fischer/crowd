@@ -14,7 +14,7 @@
   "author": "Daniel Fischer <daniel@d-fischer.dev>",
   "funding": "https://github.com/sponsors/d-fischer",
   "license": "MIT",
-  "bin": "./dist/cli.js",
+  "bin": "./dist/run.js",
   "type": "module",
   "dependencies": {
     "cmd-ts": "^0.11.0",
