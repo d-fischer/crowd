@@ -1,6 +1,6 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "https://raw.githubusercontent.com/d-fischer/crowd/main/schema.json",
+	"$id": "http://cdn.jsdelivr.net/gh/d-fischer/crowd/schema.json",
 	"title": "Crowd CLI config",
 	"description": "Configuration for the Crowd monorepo manager",
 	"type": "object",
