@@ -155,7 +155,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		await this.runScriptInAllPackagesWithRoot('preversion');
 
 		const commitMessage = config.commitMessageTemplate
-			? config.commitMessageTemplate.replace('%s', newVersion)
+			? config.commitMessageTemplate.replace('%v', newVersion)
 			: newVersion;
 
 		const changedFiles = new Set<string>();

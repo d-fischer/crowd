@@ -1,0 +1,34 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://raw.githubusercontent.com/d-fischer/crowd/main/schema.json",
+	"title": "Crowd CLI config",
+	"description": "Configuration for the Crowd monorepo manager",
+	"type": "object",
+	"properties": {
+		"currentVersion": {
+			"description": "The current version of your packages.\nDefaults to 0.0.0",
+			"type": "string"
+		},
+		"gitRemote": {
+			"description": "The git remote to use for auto-updating.\nDefaults to origin",
+			"type": "string"
+		},
+		"prereleaseIdentifier": {
+			"description": "The prefix of your prereleases",
+			"type": "string"
+		},
+		"prereleaseDistTag": {
+			"description": "The npm distribution tag your prereleases will use.\nDefaults to next",
+			"type": "string"
+		},
+		"commitMessageTemplate": {
+			"description": "The message your version commits will have.\nThe placeholder %v will be replaced with your version number.\nDefaults to %v (the version number will be the whole commit message)",
+			"type": "string"
+		},
+		"outOfDateBehavior": {
+			"description": "What should be done when your local git branch is out of date with the changes from the remote.\nDefaults to ignore",
+			"type": "string",
+			"enum": ["ignore", "pull", "forcePull", "fail"]
+		}
+	}
+}
