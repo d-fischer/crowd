@@ -58,15 +58,14 @@ export class Solution {
 		return depGraph.toposort().reverse();
 	}
 
-	async runScriptInAllPackagesWithRoot(scriptName: string, args: string[] = []) {
-		await this.runScriptInAllPackages(scriptName, args, false);
+	async runScriptInRoot(scriptName: keyof PackageJson.Scripts, args: string[] = []) {
 		const rootPackage = await this._getRootPackageJson();
 		if (rootPackage.scripts?.preversion) {
 			await runLifecycle(this._rootPath, scriptName, args);
 		}
 	}
 
-	async runScriptInAllPackages(scriptName: string, args: string[] = [], withProgress = false) {
+	async runScriptInAllPackages(scriptName: keyof PackageJson.Scripts, args: string[] = [], withProgress = false) {
 		const packageMap = await this._getPackageMap();
 		const depGraph = new DependencyGraph(packageMap);
 		depGraph.checkCycles();
@@ -118,6 +117,11 @@ export class Solution {
 
 		console.log(msg);
 		return true;
+	}
+
+	async runScriptInAllPackagesWithRoot(scriptName: keyof PackageJson.Scripts, args: string[] = []) {
+		await this.runScriptInAllPackages(scriptName, args, false);
+		await this.runScriptInRoot(scriptName, args);
 	}
 
 	async getVersionBump(type: ReleaseType) {
@@ -234,6 +238,9 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		const packageMap = await this._getPackageMap();
 		const depGraph = new DependencyGraph(packageMap);
 
+		await this.runScriptInRoot('prepare');
+		await this.runScriptInRoot('prepublishOnly');
+
 		async function exec(pkg: Package) {
 			await execProcess('npm', ['publish', ...distTagParams], pkg.basePath);
 			return undefined;
@@ -247,6 +254,9 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			})
 		);
 		await app.waitUntilExit();
+
+		await this.runScriptInRoot('publish');
+		await this.runScriptInRoot('postpublish');
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
