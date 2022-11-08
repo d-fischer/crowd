@@ -21,12 +21,15 @@ interface CrowdConfig {
 	currentVersion: string;
 	gitRemote: string;
 	prereleaseIdentifier?: string;
+	prereleaseDistTag: string;
 	commitMessageTemplate?: string;
 	outOfDateBehavior?: string;
 }
 
 interface BumpVersionOptions {
 	commitStaged: boolean;
+	publish: boolean;
+	isPrerelease: boolean;
 }
 
 interface CrowdConfigInternal {
@@ -125,9 +128,11 @@ export class Solution {
 			process.exit(1);
 		}
 
+		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
+
 		return {
-			oldVersion: currentVersion,
-			newVersion: semver.inc(currentVersion, type, config.prereleaseIdentifier)!
+			currentVersion,
+			newVersion
 		};
 	}
 
@@ -195,6 +200,8 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 
 		if (modified) {
 			changedFiles.add('crowd.json');
+			// clear config cache
+			this._crowdConfig = undefined;
 		}
 
 		await this._gitAdd(Array.from(changedFiles));
@@ -202,11 +209,44 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		await this.runScriptInAllPackagesWithRoot('version');
 
 		await execProcess('git', ['commit', '--no-verify', '-m', commitMessage], this._rootPath);
-		await execProcess('git', ['tag', `v${newVersion}`], this._rootPath);
+		await execProcess('git', ['tag', `v${newVersion}`, '-m', `version ${newVersion}`], this._rootPath);
 
 		await this.runScriptInAllPackagesWithRoot('postversion');
 
-		// TODO git push?
+		if (options.publish) {
+			await this.publishAllPackages(options.isPrerelease);
+		}
+	}
+
+	async publishAllPackages(isPreRelease?: boolean) {
+		const { config } = await this._getConfig();
+		if (isPreRelease == null) {
+			const currentVersion = semver.parse(config.currentVersion);
+			if (!currentVersion) {
+				console.error(`Invalid version set in config: ${config.currentVersion}`);
+				process.exit(1);
+			}
+
+			isPreRelease = !!currentVersion.prerelease.length;
+		}
+
+		const distTagParams = isPreRelease ? ['--tag', config.prereleaseDistTag] : [];
+		const packageMap = await this._getPackageMap();
+		const depGraph = new DependencyGraph(packageMap);
+
+		async function exec(pkg: Package) {
+			await execProcess('npm', ['publish', ...distTagParams], pkg.basePath);
+			return undefined;
+		}
+
+		const app = render(
+			React.createElement(GraphWalker, {
+				graph: depGraph,
+				exec,
+				linear: true
+			})
+		);
+		await app.waitUntilExit();
 	}
 
 	private async _getPackageMap(): Promise<Map<string, Package>> {
@@ -298,6 +338,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			config: {
 				currentVersion: '0.0.0',
 				gitRemote: 'origin',
+				prereleaseDistTag: 'next',
 				...parsed
 			}
 		});
@@ -318,7 +359,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			case 'pull':
 			case 'forcePull':
 			case 'fail': {
-				const currentBranch = await execProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
+				const currentBranch = await execProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], this._rootPath);
 				if (!currentBranch) {
 					console.error(
 						`You are not currently on the tip of a branch.
@@ -327,10 +368,10 @@ Please use ${kleur.cyan('git switch')} to choose one.`
 					);
 					process.exit(1);
 				}
-				await execProcess('git', ['fetch', config.gitRemote, currentBranch]);
-				const localRev = await execProcess('git', ['rev-parse', '@']);
-				const remoteRev = await execProcess('git', ['rev-parse', '@{u}']);
-				const baseRev = await execProcess('git', ['merge-base', '@', '@{u}']);
+				await execProcess('git', ['fetch', config.gitRemote, currentBranch], this._rootPath);
+				const localRev = await execProcess('git', ['rev-parse', '@'], this._rootPath);
+				const remoteRev = await execProcess('git', ['rev-parse', '@{u}'], this._rootPath);
+				const baseRev = await execProcess('git', ['merge-base', '@', '@{u}'], this._rootPath);
 
 				let shouldPull = false;
 				if (localRev !== remoteRev) {
@@ -356,7 +397,7 @@ Please use ${kleur.cyan('git pull')} to update it and fix any possible merge con
 				}
 
 				if (shouldPull) {
-					await execProcess('git', ['pull', config.gitRemote, currentBranch]);
+					await execProcess('git', ['pull', config.gitRemote, currentBranch], this._rootPath);
 				}
 				break;
 			}

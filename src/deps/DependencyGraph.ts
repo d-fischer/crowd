@@ -91,8 +91,12 @@ export class DependencyGraph {
 		return result;
 	}
 
+	getPackages(): Package[] {
+		return Array.from(this._packageMap.values());
+	}
+
 	filter(predicate: (pkg: Package) => boolean): Package[] {
-		return Array.from(this._packageMap.values()).filter(predicate);
+		return this.getPackages().filter(predicate);
 	}
 
 	async walkAsync(

@@ -92,9 +92,14 @@ const app = subcommands({
 					long: 'yes',
 					short: 'y',
 					description: 'Skips all interactive confirmations.'
+				}),
+				publish: flag({
+					type: boolean,
+					long: 'publish',
+					description: 'Publishes the created version to npm.'
 				})
 			},
-			handler: async ({ releaseType, commitStaged, yes }) => {
+			handler: async ({ releaseType, commitStaged, yes, publish }) => {
 				if (!VALID_RELEASE_TYPES.includes(releaseType)) {
 					console.error(
 						`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(', ')}`
@@ -104,16 +109,16 @@ const app = subcommands({
 
 				const solution = new Solution(process.cwd());
 				try {
-					const { oldVersion, newVersion } = await solution.getVersionBump(releaseType as ReleaseType);
+					const { currentVersion, newVersion } = await solution.getVersionBump(releaseType as ReleaseType);
 
 					if (!yes) {
 						console.log('This command will:');
 						console.log(
 							`- Update all your package.json files from version ${kleur.cyan(
-								oldVersion
+								currentVersion
 							)} to ${kleur.cyan(newVersion)} (including dependencies) as well as your crowd.json file`
 						);
-						let commitBulletPoint = '- Create a commit with the above changes';
+						let commitBulletPoint = `- Create a ${kleur.cyan('commit')} with the above changes`;
 						if (commitStaged) {
 							commitBulletPoint += kleur.cyan(' and any changes already in the git index');
 						}
@@ -124,6 +129,9 @@ const app = subcommands({
 								'preversion, version and postversion'
 							)} scripts in all packages and in the root at the appropriate times`
 						);
+						if (publish) {
+							console.log(`- ${kleur.cyan('Publish')} all packages`);
+						}
 
 						const { confirmed } = (await prompts({
 							type: 'confirm',
@@ -138,9 +146,13 @@ const app = subcommands({
 						}
 					}
 
-					await solution.updateVersion(newVersion, { commitStaged });
+					await solution.updateVersion(newVersion, {
+						commitStaged,
+						publish,
+						isPrerelease: releaseType.startsWith('pre')
+					});
 
-					console.log(`Updated version from ${kleur.cyan(oldVersion)} to ${kleur.cyan(newVersion)}`);
+					console.log(`Updated version from ${kleur.cyan(currentVersion)} to ${kleur.cyan(newVersion)}`);
 				} catch (e) {
 					handleError(e);
 				}

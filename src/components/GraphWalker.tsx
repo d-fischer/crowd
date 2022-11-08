@@ -9,6 +9,7 @@ export interface GraphWalkerProps {
 	graph: DependencyGraph;
 	exec: (pkg: Package) => Promise<GraphResult | undefined>;
 	skipPackages?: string[];
+	linear?: boolean;
 }
 
 interface ResultInfo {
@@ -17,33 +18,56 @@ interface ResultInfo {
 	result?: GraphResult;
 }
 
-export const GraphWalker = ({ graph, exec, skipPackages }: GraphWalkerProps): ReactElement => {
+export const GraphWalker = ({ graph, exec, skipPackages, linear }: GraphWalkerProps): ReactElement => {
 	const [runningEntries, setRunningEntries] = useState<string[]>([]);
 	const [finishedEntries, setFinishedEntries] = useState<ResultInfo[]>([]);
 
 	const { exit } = useApp();
 
 	useEffect(() => {
-		void graph
-			.walkAsync(
-				async (pkg): Promise<GraphResult | undefined> => {
+		if (linear) {
+			void (async () => {
+				let errors = 0;
+				for (const pkg of graph.getPackages()) {
 					setRunningEntries(prev => [...prev, pkg.name]);
-					const result = await exec(pkg);
-					setFinishedEntries(prev => [...prev, { package: pkg.name, result }]);
-					setRunningEntries(prev => prev.filter(item => item !== pkg.name));
-					return result;
-				},
-				(e, pkg) => {
-					setFinishedEntries(prev => [...prev, { package: pkg.name, error: e }]);
-					setRunningEntries(prev => prev.filter(item => item !== pkg.name));
-				},
-				skipPackages
-			)
-			.then(
-				() => exit(),
-				e => exit(e)
-			);
-	}, [graph, exec]);
+					try {
+						const result = await exec(pkg);
+						setFinishedEntries(prev => [...prev, { package: pkg.name, result }]);
+						setRunningEntries(prev => prev.filter(item => item !== pkg.name));
+					} catch (e) {
+						errors++;
+						setFinishedEntries(prev => [...prev, { package: pkg.name, error: e as Error }]);
+						setRunningEntries(prev => prev.filter(item => item !== pkg.name));
+					}
+				}
+				if (errors) {
+					exit(new Error(`Error processing ${errors} packages; please check the result manually`));
+				} else {
+					exit();
+				}
+			})();
+		} else {
+			void graph
+				.walkAsync(
+					async (pkg): Promise<GraphResult | undefined> => {
+						setRunningEntries(prev => [...prev, pkg.name]);
+						const result = await exec(pkg);
+						setFinishedEntries(prev => [...prev, { package: pkg.name, result }]);
+						setRunningEntries(prev => prev.filter(item => item !== pkg.name));
+						return result;
+					},
+					(e, pkg) => {
+						setFinishedEntries(prev => [...prev, { package: pkg.name, error: e }]);
+						setRunningEntries(prev => prev.filter(item => item !== pkg.name));
+					},
+					skipPackages
+				)
+				.then(
+					() => exit(),
+					e => exit(e)
+				);
+		}
+	}, [graph, exec, linear]);
 
 	return (
 		<Box flexDirection="column">
