@@ -1,5 +1,5 @@
 {
-  "name": "crowd",
+  "name": "@d-fischer/crowd",
   "version": "0.0.1",
   "publishConfig": {
     "access": "public"
@@ -14,7 +14,7 @@
   "author": "Daniel Fischer <daniel@d-fischer.dev>",
   "funding": "https://github.com/sponsors/d-fischer",
   "license": "MIT",
-  "bin": "./bin/crowd.js",
+  "bin": "./dist/cli.js",
   "type": "module",
   "dependencies": {
     "cmd-ts": "^0.11.0",
