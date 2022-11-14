@@ -1,4 +1,4 @@
-# IRCv3
+# crowd - monorepo manager for TypeScript
 
 **ATTENTION**: This library is still under initial development.
 
