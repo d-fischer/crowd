@@ -60,7 +60,7 @@ export class Solution {
 
 	async runScriptInRoot(scriptName: keyof PackageJson.Scripts, args: string[] = []) {
 		const rootPackage = await this._getRootPackageJson();
-		if (rootPackage.scripts?.preversion) {
+		if (rootPackage.scripts?.[scriptName]) {
 			await runLifecycle(this._rootPath, scriptName, args);
 		}
 	}
