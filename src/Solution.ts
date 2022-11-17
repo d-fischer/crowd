@@ -38,10 +38,15 @@ interface CrowdConfigInternal {
 	config: CrowdConfig;
 }
 
+interface PackageJsonInternal {
+	raw: string;
+	parsed: PackageJson;
+}
+
 export class Solution {
 	private _crowdConfig?: CrowdConfigInternal;
 	private _rootTsConfig?: ParsedCommandLine;
-	private _rootPackageJson?: PackageJson;
+	private _rootPackageJson?: PackageJsonInternal;
 	private _packageMap?: Map<string, Package>;
 
 	constructor(private readonly _rootPath: string) {}
@@ -59,7 +64,7 @@ export class Solution {
 	}
 
 	async runScriptInRoot(scriptName: keyof PackageJson.Scripts, args: string[] = []) {
-		const rootPackage = await this._getRootPackageJson();
+		const { parsed: rootPackage } = await this._getRootPackageJson();
 		if (rootPackage.scripts?.[scriptName]) {
 			await runLifecycle(this._rootPath, scriptName, args);
 		}
@@ -289,7 +294,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		));
 	}
 
-	private async _getRootPackageJson(): Promise<PackageJson> {
+	private async _getRootPackageJson(): Promise<PackageJsonInternal> {
 		if (this._rootPackageJson) {
 			return this._rootPackageJson;
 		}
@@ -307,7 +312,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		return true;
 	}
 
-	private async _getPackageJson(folderPath: string) {
+	private async _getPackageJson(folderPath: string): Promise<PackageJsonInternal> {
 		const filePath = path.join(folderPath, 'package.json');
 		const raw = await fs.readFile(filePath, 'utf-8');
 		const parsed = JSON.parse(raw) as PackageJson;
