@@ -218,7 +218,8 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		await this.runScriptInAllPackagesWithRoot('version');
 
 		await execProcess('git', ['commit', '--no-verify', '-m', commitMessage], this._rootPath);
-		await execProcess('git', ['tag', `v${newVersion}`, '-m', `version ${newVersion}`], this._rootPath);
+		const tagName = `v${newVersion}`;
+		await execProcess('git', ['tag', tagName, '-m', tagName], this._rootPath);
 
 		await this.runScriptInAllPackagesWithRoot('postversion');
 
