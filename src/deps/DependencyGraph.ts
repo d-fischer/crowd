@@ -1,8 +1,7 @@
 import type { PackageJson } from 'type-fest';
 import type { ProjectReference } from 'typescript';
+import { GraphError, type GraphErrorInfo } from '../errors/GraphError.js';
 import { GraphTaskError } from '../errors/GraphTaskError.js';
-import type { GraphErrorInfo } from '../errors/GraphError.js';
-import { GraphError } from '../errors/GraphError.js';
 
 export interface Package {
 	name: string;
@@ -48,7 +47,9 @@ export class DependencyGraph {
 
 	checkCycles() {
 		if (!this._cyclesChecked) {
-			this._roots.forEach(child => this._checkCyclesInSubgraph(child, []));
+			this._roots.forEach(child => {
+				this._checkCyclesInSubgraph(child, []);
+			});
 			this._cyclesChecked = true;
 		}
 	}
@@ -160,6 +161,8 @@ export class DependencyGraph {
 		if (found !== -1) {
 			throw new Error(`dependency cycle detected: ${[...ancestors.slice(found), node.pkgName].join(' -> ')}`);
 		}
-		node.children.forEach(child => this._checkCyclesInSubgraph(child, [...ancestors, node.pkgName]));
+		node.children.forEach(child => {
+			this._checkCyclesInSubgraph(child, [...ancestors, node.pkgName]);
+		});
 	}
 }
