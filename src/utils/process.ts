@@ -1,9 +1,9 @@
-import { spawn } from 'child_process';
+import { spawn } from 'cross-spawn';
 import { ExecutionError } from '../errors/ExecutionError.js';
 
 export async function execProcess(cmd: string, args: string[] = [], cwd?: string): Promise<string> {
 	return await new Promise((resolve, reject) => {
-		const proc = spawn(cmd, args, { cwd, shell: process.platform === 'win32' });
+		const proc = spawn(cmd, args, { cwd });
 
 		let output = '';
 		let errOutput = '';
