@@ -3,7 +3,7 @@ import { ExecutionError } from '../errors/ExecutionError.js';
 
 export async function execProcess(cmd: string, args: string[] = [], cwd?: string): Promise<string> {
 	return await new Promise((resolve, reject) => {
-		const proc = spawn(cmd, args, { cwd });
+		const proc = spawn(cmd, args, { cwd, shell: process.platform === 'win32' });
 
 		let output = '';
 		let errOutput = '';
