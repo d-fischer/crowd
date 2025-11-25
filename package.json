@@ -10,11 +10,16 @@
     "monorepo",
     "build"
   ],
-  "repository": "github:d-fischer/crowd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d-fischer/crowd.git"
+  },
   "author": "Daniel Fischer <daniel@d-fischer.dev>",
   "funding": "https://github.com/sponsors/d-fischer",
   "license": "MIT",
-  "bin": "./dist/run.js",
+  "bin": {
+    "crowd": "dist/run.js"
+  },
   "type": "module",
   "dependencies": {
     "cmd-ts": "^0.11.0",
