@@ -135,7 +135,7 @@ export class Solution {
 			process.exit(1);
 		}
 
-		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier)!;
+		const newVersion = semver.inc(currentVersion, type, config.prereleaseIdentifier ?? 'pre')!;
 
 		return {
 			currentVersion,
