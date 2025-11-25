@@ -246,11 +246,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		await this.runScriptInRoot('prepublishOnly');
 
 		async function exec(pkg: Package) {
-			await execProcess(
-				process.platform === 'win32' ? 'npm.cmd' : 'npm',
-				['publish', ...distTagParams],
-				pkg.basePath
-			);
+			await execProcess('npm', ['publish', ...distTagParams], pkg.basePath);
 			return undefined;
 		}
 
