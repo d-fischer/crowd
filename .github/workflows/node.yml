@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 18
-      - run: yarn
-      - run: yarn run prettier:check
-      - run: yarn run build
-      - run: yarn run lint
+      - run: npm i
+      - run: npm run prettier:check
+      - run: npm run build
+      - run: npm run lint

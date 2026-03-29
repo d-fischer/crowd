@@ -5,9 +5,9 @@ set -e
 CWD="$(pwd)"
 cd "$(dirname $0)"
 
-yarn lint
-yarn prettier:check
-yarn rebuild
+npm run lint
+npm run prettier:check
+npm run rebuild
 
 VERSIONTYPE="${1:-patch}"
 npm version --preid pre ${VERSIONTYPE} -m "release version %s"

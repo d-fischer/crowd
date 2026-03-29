@@ -61,7 +61,7 @@
     "prettier:check": "prettier --check src",
     "prettier:fix": "prettier --write src",
     "build": "tsc",
-    "rebuild": "rimraf lib && yarn run build"
+    "rebuild": "rimraf lib && npm run build"
   },
   "husky": {
     "hooks": {
