@@ -1,8 +1,7 @@
-import type { DependencyGraph, GraphResult, Package } from '../deps/DependencyGraph.js';
-import type { ReactElement } from 'react';
-import React, { useEffect, useState } from 'react';
 import { Box, Static, Text, useApp } from 'ink';
 import Spinner from 'ink-spinner';
+import React, { type ReactElement, useEffect, useState } from 'react';
+import type { DependencyGraph, GraphResult, Package } from '../deps/DependencyGraph.js';
 import { GraphTaskError } from '../errors/GraphTaskError.js';
 
 export interface GraphWalkerProps {
@@ -109,7 +108,7 @@ export const GraphWalker = ({ graph, exec, skipPackages, linear }: GraphWalkerPr
 			{runningEntries.map(item => (
 				<Text key={item}>
 					<Text color="cyan">
-						<Spinner.default />
+						<Spinner />
 					</Text>
 					<Text> </Text>
 					{item}
