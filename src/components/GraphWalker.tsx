@@ -1,5 +1,6 @@
 import { Box, Static, Text, useApp } from 'ink';
 import Spinner from 'ink-spinner';
+import * as util from 'node:util';
 import React, { type ReactElement, useEffect, useState } from 'react';
 import type { DependencyGraph, GraphResult, Package } from '../deps/DependencyGraph.js';
 import { GraphTaskError } from '../errors/GraphTaskError.js';
@@ -80,9 +81,12 @@ export const GraphWalker = ({ graph, exec, skipPackages, linear, debug }: GraphW
 								{item.error.additionalInfo ? ` (${item.error.additionalInfo})` : ''}
 							</Text>
 						) : (
-							<Text key={item.package} color="red">
-								{'\u2717'} {item.package}
-							</Text>
+							<React.Fragment key={item.package}>
+								<Text key={item.package} color="red">
+									{'\u2717'} {item.package}
+								</Text>
+								{debug && <Text>{util.inspect(item.error)}</Text>}
+							</React.Fragment>
 						)
 					) : item.result ? (
 						item.result.status === 'skipped' ? (
