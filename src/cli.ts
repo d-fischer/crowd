@@ -34,10 +34,15 @@ export async function cli() {
 						long: 'toposort',
 						short: 't',
 						description: 'topologically sort the packages based on the dependency graph'
+					}),
+					debug: flag({
+						type: boolean,
+						long: 'debug',
+						description: 'print debug information'
 					})
 				},
-				handler: async ({ toposort }) => {
-					const solution = new Solution(process.cwd());
+				handler: async ({ toposort, debug }) => {
+					const solution = new Solution({ rootPath: process.cwd(), debug });
 					console.log((await solution.listPackages(toposort)).join('\n'));
 				}
 			}),
@@ -58,10 +63,15 @@ export async function cli() {
 						long: 'no-progress',
 						short: 'P',
 						description: 'disable detailed progress of separate packages'
+					}),
+					debug: flag({
+						type: boolean,
+						long: 'debug',
+						description: 'print debug information'
 					})
 				},
-				handler: async ({ scriptName, args, noProgress }) => {
-					const solution = new Solution(process.cwd());
+				handler: async ({ scriptName, args, noProgress, debug }) => {
+					const solution = new Solution({ rootPath: process.cwd(), debug });
 					try {
 						const anyExecuted = await solution.runScriptInAllPackages(scriptName, args, !noProgress);
 						if (!anyExecuted) {
@@ -98,9 +108,14 @@ export async function cli() {
 						type: boolean,
 						long: 'publish',
 						description: 'Publishes the created version to npm.'
+					}),
+					debug: flag({
+						type: boolean,
+						long: 'debug',
+						description: 'print debug information'
 					})
 				},
-				handler: async ({ releaseType, commitStaged, yes, publish }) => {
+				handler: async ({ releaseType, commitStaged, yes, publish, debug }) => {
 					if (!VALID_RELEASE_TYPES.includes(releaseType)) {
 						console.error(
 							`Invalid release type given: ${releaseType}\n\nValid types: ${VALID_RELEASE_TYPES.join(
@@ -110,7 +125,7 @@ export async function cli() {
 						process.exit(1);
 					}
 
-					const solution = new Solution(process.cwd());
+					const solution = new Solution({ rootPath: process.cwd(), debug });
 					try {
 						const { currentVersion, newVersion } = await solution.getVersionBump(
 							releaseType as ReleaseType

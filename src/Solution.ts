@@ -41,13 +41,23 @@ interface PackageJsonInternal {
 	parsed: PackageJson;
 }
 
+interface SolutionParams {
+	rootPath: string;
+	debug?: boolean;
+}
+
 export class Solution {
 	private _crowdConfig?: CrowdConfigInternal;
 	private _rootTsConfig?: ParsedCommandLine;
 	private _rootPackageJson?: PackageJsonInternal;
 	private _packageMap?: Map<string, Package>;
+	private readonly _rootPath: string;
+	private readonly _debug: boolean;
 
-	constructor(private readonly _rootPath: string) {}
+	constructor(params: SolutionParams) {
+		this._rootPath = params.rootPath;
+		this._debug = params.debug ?? false;
+	}
 
 	async listPackages(useToposort: boolean = true): Promise<string[]> {
 		const packageMap = await this._getPackageMap();
@@ -105,7 +115,8 @@ export class Solution {
 				React.createElement(GraphWalker, {
 					graph: depGraph,
 					exec,
-					skipPackages
+					skipPackages,
+					debug: this._debug
 				})
 			);
 			await app.waitUntilExit();
@@ -254,7 +265,8 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			React.createElement(GraphWalker, {
 				graph: depGraph,
 				exec,
-				linear: true
+				linear: true,
+				debug: this._debug
 			})
 		);
 		await app.waitUntilExit();

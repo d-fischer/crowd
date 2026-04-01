@@ -9,6 +9,7 @@ export interface GraphWalkerProps {
 	exec: (pkg: Package) => Promise<GraphResult | undefined>;
 	skipPackages?: string[];
 	linear?: boolean;
+	debug?: boolean;
 }
 
 interface ResultInfo {
@@ -17,7 +18,7 @@ interface ResultInfo {
 	result?: GraphResult;
 }
 
-export const GraphWalker = ({ graph, exec, skipPackages, linear }: GraphWalkerProps): ReactElement => {
+export const GraphWalker = ({ graph, exec, skipPackages, linear, debug }: GraphWalkerProps): ReactElement => {
 	const [runningEntries, setRunningEntries] = useState<string[]>([]);
 	const [finishedEntries, setFinishedEntries] = useState<ResultInfo[]>([]);
 
@@ -94,9 +95,12 @@ export const GraphWalker = ({ graph, exec, skipPackages, linear }: GraphWalkerPr
 								{'\u2713'} {item.package}
 							</Text>
 						) : item.result.status === 'error' ? (
-							<Text key={item.package} color="red">
-								{'\u2717'} {item.package}
-							</Text>
+							<React.Fragment key={item.package}>
+								<Text color="red">
+									{'\u2717'} {item.package}
+								</Text>
+								{debug && item.result.additionalInfo && <Text>{item.result.additionalInfo}</Text>}
+							</React.Fragment>
 						) : null
 					) : (
 						<Text key={item.package} color="green">
