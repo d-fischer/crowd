@@ -202,7 +202,7 @@ export async function cli() {
 						if (publish) {
 							console.log(
 								`Now, go to ${kleur.cyan(
-									`https://www.npmjs.com/settings/${userName}}/staged-packages`
+									`https://www.npmjs.com/settings/${userName}/staged-packages`
 								)} to approve all staged packages.`
 							);
 						}
