@@ -159,7 +159,7 @@ export class Solution {
 
 		if (!options.commitStaged) {
 			try {
-				await execProcess('git', ['diff', '--quiet', '--cached'], this._rootPath);
+				await execProcess('git', ['diff', '--quiet', '--cached'], { cwd: this._rootPath });
 			} catch (e) {
 				console.error(`There are staged changes in your git repository.
 				
@@ -226,9 +226,9 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 
 		await this.runScriptInAllPackagesWithRoot('version');
 
-		await execProcess('git', ['commit', '--no-verify', '-m', commitMessage], this._rootPath);
+		await execProcess('git', ['commit', '--no-verify', '-m', commitMessage], { cwd: this._rootPath });
 		const tagName = `v${newVersion}`;
-		await execProcess('git', ['tag', tagName, '-m', tagName], this._rootPath);
+		await execProcess('git', ['tag', tagName, '-m', tagName], { cwd: this._rootPath });
 
 		await this.runScriptInAllPackagesWithRoot('postversion');
 
@@ -257,7 +257,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 		await this.runScriptInRoot('prepublishOnly');
 
 		async function exec(pkg: Package) {
-			await execProcess('npm', ['publish', ...distTagParams], pkg.basePath);
+			await execProcess('npm', ['publish', '--loglevel', 'error', ...distTagParams], { cwd: pkg.basePath });
 			return undefined;
 		}
 
@@ -371,7 +371,7 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 	}
 
 	private async _gitAdd(files: string[]) {
-		await execProcess('git', ['add', '--', ...files], this._rootPath);
+		await execProcess('git', ['add', '--', ...files], { cwd: this._rootPath });
 	}
 
 	private async _handleOutOfDate() {
@@ -385,7 +385,9 @@ Please stash them or rerun this command with ${kleur.cyan('--commit-staged')} to
 			case 'pull':
 			case 'forcePull':
 			case 'fail': {
-				const currentBranch = await execProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], this._rootPath);
+				const currentBranch = await execProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+					cwd: this._rootPath
+				});
 				if (!currentBranch) {
 					console.error(
 						`You are not currently on the tip of a branch.
@@ -394,10 +396,10 @@ Please use ${kleur.cyan('git switch')} to choose one.`
 					);
 					process.exit(1);
 				}
-				await execProcess('git', ['fetch', config.gitRemote, currentBranch], this._rootPath);
-				const localRev = await execProcess('git', ['rev-parse', '@'], this._rootPath);
-				const remoteRev = await execProcess('git', ['rev-parse', '@{u}'], this._rootPath);
-				const baseRev = await execProcess('git', ['merge-base', '@', '@{u}'], this._rootPath);
+				await execProcess('git', ['fetch', config.gitRemote, currentBranch], { cwd: this._rootPath });
+				const localRev = await execProcess('git', ['rev-parse', '@'], { cwd: this._rootPath });
+				const remoteRev = await execProcess('git', ['rev-parse', '@{u}'], { cwd: this._rootPath });
+				const baseRev = await execProcess('git', ['merge-base', '@', '@{u}'], { cwd: this._rootPath });
 
 				let shouldPull = false;
 				if (localRev !== remoteRev) {
@@ -423,7 +425,7 @@ Please use ${kleur.cyan('git pull')} to update it and fix any possible merge con
 				}
 
 				if (shouldPull) {
-					await execProcess('git', ['pull', config.gitRemote, currentBranch], this._rootPath);
+					await execProcess('git', ['pull', config.gitRemote, currentBranch], { cwd: this._rootPath });
 				}
 				break;
 			}
