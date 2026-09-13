@@ -2,8 +2,10 @@ import { boolean, command, flag, positional, rest, run, string, subcommands } fr
 import kleur from 'kleur';
 import prompts from 'prompts';
 import type { ReleaseType } from 'semver';
+import { ExecutionError } from './errors/ExecutionError.js';
 import { GraphError } from './errors/GraphError.js';
 import { Solution } from './Solution.js';
+import { execProcess } from './utils/process.js';
 
 const VALID_RELEASE_TYPES = ['major', 'premajor', 'minor', 'preminor', 'patch', 'prepatch', 'prerelease'];
 
@@ -107,7 +109,7 @@ export async function cli() {
 					publish: flag({
 						type: boolean,
 						long: 'publish',
-						description: 'Publishes the created version to npm.'
+						description: 'Stages the created version to npm.'
 					}),
 					debug: flag({
 						type: boolean,
@@ -125,6 +127,28 @@ export async function cli() {
 						process.exit(1);
 					}
 
+					// only used if publishing, so it can be empty otherwise (not null - that would make TS annoying)
+					let userName = '';
+					if (publish) {
+						try {
+							userName = await execProcess('npm', ['whoami'], { cwd: process.cwd() }).then(str =>
+								str.trim()
+							);
+						} catch (e) {
+							if (e instanceof ExecutionError) {
+								console.error(
+									`Your npm username could not be determined. You probably need to run ${kleur.cyan(
+										'npm login'
+									)} to make sure you can properly stage packages.`
+								);
+								console.error(`Output of ${kleur.cyan('npm whoami')}:`);
+								console.error(e.stderr);
+								process.exit(1);
+							}
+
+							throw e;
+						}
+					}
 					const solution = new Solution({ rootPath: process.cwd(), debug });
 					try {
 						const { currentVersion, newVersion } = await solution.getVersionBump(
@@ -152,7 +176,7 @@ export async function cli() {
 								)} scripts in all packages and in the root at the appropriate times`
 							);
 							if (publish) {
-								console.log(`- ${kleur.cyan('Publish')} all packages`);
+								console.log(`- ${kleur.cyan('Stage publishing')} all packages`);
 							}
 
 							const { confirmed } = (await prompts({
@@ -175,6 +199,13 @@ export async function cli() {
 						});
 
 						console.log(`Updated version from ${kleur.cyan(currentVersion)} to ${kleur.cyan(newVersion)}`);
+						if (publish) {
+							console.log(
+								`Now, go to ${kleur.cyan(
+									`https://www.npmjs.com/settings/${userName}}/staged-packages`
+								)} to approve all staged packages.`
+							);
+						}
 					} catch (e) {
 						handleError(e);
 					}
