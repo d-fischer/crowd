@@ -10,7 +10,11 @@ export async function execProcess(cmd: string, args: string[] = [], options: Exe
 	const { cwd, interactive } = options;
 
 	return await new Promise((resolve, reject) => {
-		const proc = spawn(cmd, args, { cwd, stdio: interactive ? 'inherit' : 'pipe' });
+		const proc = spawn(cmd, args, {
+			cwd,
+			stdio: interactive ? 'inherit' : 'pipe',
+			shell: options.interactive
+		});
 
 		let output = '';
 		let errOutput = '';
@@ -25,7 +29,7 @@ export async function execProcess(cmd: string, args: string[] = [], options: Exe
 
 		proc.on('close', err => {
 			if (err) {
-				reject(new ExecutionError(err, errOutput));
+				reject(new ExecutionError(cmd, args, err, errOutput));
 			} else {
 				resolve(output.trimEnd());
 			}
